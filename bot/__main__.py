@@ -2,13 +2,39 @@ import asyncio
 import os
 
 from aiogram import Bot, Dispatcher, F
-from aiogram.filters import Command, CommandStart
-from aiogram.types import Message
+from aiogram.filters import Command
+from aiogram.types import Message, MessageOriginChannel
 from dotenv import load_dotenv
 
 
+# Channel post id -> discussion thread id.
+threads: dict[int, int | None] = {}
+# Thread id -> number of comments counted so far.
+counts: dict[int, int] = {}
+
+
 async def new(message: Message) -> None:
-    await message.answer("New!")
+    sent = await message.answer("New!")
+    threads[sent.message_id] = None
+
+
+def forwarded_channel_post_id(message: Message) -> int | None:
+    if isinstance(origin := message.forward_origin, MessageOriginChannel):
+        return origin.message_id
+    return message.forward_from_message_id
+
+
+async def discussion(message: Message) -> None:
+    if message.is_automatic_forward:
+        if (channel_post_id := forwarded_channel_post_id(message)) in threads:
+            thread_id = message.message_id
+            threads[channel_post_id] = thread_id
+            counts[thread_id] = 0
+        return
+
+    if (thread_id := message.message_thread_id) in counts:
+        counts[thread_id] += 1
+        await message.reply(str(counts[thread_id]))
 
 
 async def main() -> None:
@@ -27,6 +53,7 @@ async def main() -> None:
 
     dp = Dispatcher()
     dp.channel_post.register(new, Command("new"), F.chat.id == target_channel_id)
+    dp.message.register(discussion, F.chat.type == "supergroup")
 
     await dp.start_polling(bot)
 
