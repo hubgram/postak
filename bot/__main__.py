@@ -1,14 +1,14 @@
 import asyncio
 import os
 
-from aiogram import Bot, Dispatcher
-from aiogram.filters import CommandStart
+from aiogram import Bot, Dispatcher, F
+from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
 from dotenv import load_dotenv
 
 
-async def start(message: Message) -> None:
-    await message.answer("Hi!")
+async def new(message: Message) -> None:
+    await message.answer("New!")
 
 
 async def main() -> None:
@@ -18,10 +18,15 @@ async def main() -> None:
     if not token:
         raise RuntimeError("BOT_TOKEN is not set. Add it to your .env file.")
 
+    raw_channel_id = os.getenv("TARGET_CHANNEL_ID")
+    if not raw_channel_id:
+        raise RuntimeError("TARGET_CHANNEL_ID is not set. Add it to your .env file.")
+    target_channel_id = int(raw_channel_id)
+
     bot = Bot(token=token)
 
     dp = Dispatcher()
-    dp.message.register(start, CommandStart())
+    dp.channel_post.register(new, Command("new"), F.chat.id == target_channel_id)
 
     await dp.start_polling(bot)
 
