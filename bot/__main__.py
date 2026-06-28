@@ -2,14 +2,18 @@ import asyncio
 import os
 
 from aiogram import Bot, Dispatcher, F
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from aiogram.filters import Command
-from aiogram.types import Message, MessageOriginChannel
+from aiogram.types import InputRichMessage, Message, MessageOriginChannel
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
+from telegramify_markdown import telegramify_rich
 
 from bot.store import DialogStore
 
 SYSTEM_PROMPT = "You are a helpful assistant replying to comments on a Telegram post."
+NEW_MESSAGE = "**💬 New Conversation**\n\n_Reply to this message to chat with AI_\\."
 
 # Channel post id -> discussion thread id.
 threads: dict[int, int | None] = {}
@@ -18,7 +22,7 @@ store = DialogStore()
 
 
 async def new(message: Message) -> None:
-    sent = await message.answer("New!")
+    sent = await message.answer(NEW_MESSAGE)
     threads[sent.message_id] = None
 
 
@@ -32,6 +36,12 @@ def forwarded_channel_post_id(message: Message) -> int | None:
 async def answer(client: AsyncOpenAI, model: str, messages: list[dict[str, str]]) -> str:
     response = await client.chat.completions.create(model=model, messages=messages)
     return response.choices[0].message.content or ""
+
+
+async def send_rich(message: Message, text: str) -> None:
+    """Convert Markdown to Telegram Rich Messages and reply with each chunk."""
+    for rich_text in telegramify_rich(text):
+        await message.reply_rich(InputRichMessage(**rich_text.to_dict()))
 
 
 async def discussion(message: Message, client: AsyncOpenAI, model: str) -> None:
@@ -51,7 +61,9 @@ async def discussion(message: Message, client: AsyncOpenAI, model: str) -> None:
         store.add(thread_id, "user", message.text)
         reply = await answer(client, model, store.messages(thread_id))
         store.add(thread_id, "assistant", reply)
-        await message.reply(reply)
+        # LLM output is standard Markdown; telegramify_rich() converts it to
+        # Telegram Rich Messages (HTML) sent via the sendRichMessage API.
+        await send_rich(message, reply)
 
 
 async def main() -> None:
@@ -74,7 +86,10 @@ async def main() -> None:
         api_key=os.getenv("LLM_API_KEY") or "not-needed",
     )
 
-    bot = Bot(token=token)
+    bot = Bot(
+        token=token,
+        default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN_V2),
+    )
 
     dp = Dispatcher()
     dp["client"] = client
