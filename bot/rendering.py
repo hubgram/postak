@@ -1,7 +1,9 @@
+import contextlib
 import re
 import unicodedata
 from collections.abc import AsyncIterator
 
+from aiogram.enums import ChatAction
 from aiogram.types import InputRichMessage, Message
 from telegramify_markdown.stream import EditStream
 
@@ -39,7 +41,11 @@ def styled_rich(payload) -> InputRichMessage:
 
 
 async def stream_tokens(message: Message, tokens: AsyncIterator[str]) -> str:
-    """Stream an async token iterator into one reply via EditStream; return the text."""
+    """Stream an async token iterator into one reply via EditStream; return the text.
+
+    Sends a 'typing' action first, so the user sees the bot working before the first
+    streamed message appears.
+    """
     bot = message.bot
     assert bot is not None  # always set on messages received in a handler
 
@@ -54,6 +60,10 @@ async def stream_tokens(message: Message, tokens: AsyncIterator[str]) -> str:
             message_id=message_id,
         )
 
+    with contextlib.suppress(Exception):
+        await bot.send_chat_action(
+            message.chat.id, ChatAction.TYPING, message_thread_id=message.message_thread_id
+        )
     async with EditStream(send_message, edit_message, mode="rich") as stream:
         await stream.consume(tokens)
     return stream.buffer
