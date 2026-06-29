@@ -12,7 +12,7 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 from telegramify_markdown.stream import EditStream
 
-from bot.store import DialogStore, InMemoryDialogStore, SqliteDialogStore
+from bot.store import DialogStore, SqliteDialogStore, create_store
 
 SYSTEM_PROMPT = "You are a helpful assistant replying to comments on a Telegram post."
 NEW_MESSAGE = "**💬 New Conversation**\n\n_Reply to this message to chat with AI_\\."
@@ -85,10 +85,10 @@ async def discussion(message: Message, client: AsyncOpenAI, model: str, store: D
 
 
 def build_store() -> DialogStore:
-    window = int(os.getenv("HISTORY_WINDOW", "20"))
-    if os.getenv("STORE", "sqlite") == "memory":
-        return InMemoryDialogStore(window=window)
-    return SqliteDialogStore(os.getenv("SQLITE_PATH", "posttalk.db"), window=window)
+    return create_store(
+        os.getenv("DATABASE_URL", "sqlite+aiosqlite:///posttalk.db"),
+        window=int(os.getenv("HISTORY_WINDOW", "20")),
+    )
 
 
 async def main() -> None:
