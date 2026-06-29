@@ -1,5 +1,6 @@
 import asyncio
 import os
+from typing import cast
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
@@ -8,6 +9,7 @@ from aiogram.filters import Command
 from aiogram.types import InputRichMessage, Message, MessageOriginChannel
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletionMessageParam
 from telegramify_markdown.stream import EditStream
 
 from bot.store import DialogStore
@@ -38,8 +40,13 @@ async def stream_answer(
 ) -> str:
     """Stream the LLM answer into one reply, editing it live. Returns the full text."""
     completion = await client.chat.completions.create(
-        model=model, messages=messages, stream=True
+        model=model,
+        messages=cast(list[ChatCompletionMessageParam], messages),
+        stream=True,
     )
+
+    bot = message.bot
+    assert bot is not None  # always set on messages received in a handler
 
     async def tokens():
         async for chunk in completion:
@@ -51,7 +58,7 @@ async def stream_answer(
         return sent.message_id
 
     async def edit_message(message_id: int, payload) -> None:
-        await message.bot.edit_message_text(
+        await bot.edit_message_text(
             rich_message=InputRichMessage(**payload.rich_message.to_dict()),
             chat_id=message.chat.id,
             message_id=message_id,
@@ -70,14 +77,14 @@ async def discussion(message: Message, client: AsyncOpenAI, model: str) -> None:
     # and open a dialog for it.
     if message.is_automatic_forward:
         if (channel_post_id := forwarded_channel_post_id(message)) in threads:
-            thread_id = message.message_id
-            threads[channel_post_id] = thread_id
-            store.start(thread_id, system=SYSTEM_PROMPT)
+            new_thread_id = message.message_id
+            threads[channel_post_id] = new_thread_id
+            store.start(new_thread_id, system=SYSTEM_PROMPT)
         return
 
     # Stream the answer into a single reply that is edited as tokens arrive.
     thread_id = message.message_thread_id
-    if store.has(thread_id) and message.text:
+    if thread_id is not None and store.has(thread_id) and message.text:
         store.add(thread_id, "user", message.text)
         reply = await stream_answer(message, client, model, store.messages(thread_id))
         store.add(thread_id, "assistant", reply)
