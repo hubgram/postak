@@ -8,7 +8,7 @@ from aiogram.filters import Command
 from aiogram.types import InputRichMessage, Message, MessageOriginChannel
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
-from telegramify_markdown import telegramify_rich
+from telegramify_markdown.stream import EditStream
 
 from bot.store import DialogStore
 
@@ -33,15 +33,35 @@ def forwarded_channel_post_id(message: Message) -> int | None:
     return message.forward_from_message_id
 
 
-async def answer(client: AsyncOpenAI, model: str, messages: list[dict[str, str]]) -> str:
-    response = await client.chat.completions.create(model=model, messages=messages)
-    return response.choices[0].message.content or ""
+async def stream_answer(
+    message: Message, client: AsyncOpenAI, model: str, messages: list[dict[str, str]]
+) -> str:
+    """Stream the LLM answer into one reply, editing it live. Returns the full text."""
+    completion = await client.chat.completions.create(
+        model=model, messages=messages, stream=True
+    )
 
+    async def tokens():
+        async for chunk in completion:
+            if delta := chunk.choices[0].delta.content:
+                yield delta
 
-async def send_rich(message: Message, text: str) -> None:
-    """Convert Markdown to Telegram Rich Messages and reply with each chunk."""
-    for rich_text in telegramify_rich(text):
-        await message.reply_rich(InputRichMessage(**rich_text.to_dict()))
+    async def send_message(payload) -> int:
+        sent = await message.reply_rich(InputRichMessage(**payload.rich_message.to_dict()))
+        return sent.message_id
+
+    async def edit_message(message_id: int, payload) -> None:
+        await message.bot.edit_message_text(
+            rich_message=InputRichMessage(**payload.rich_message.to_dict()),
+            chat_id=message.chat.id,
+            message_id=message_id,
+        )
+
+    # rich mode: send the first rich message, then stream edits via
+    # editMessageText(rich_message=...). EditStream throttles to Telegram's 1s limit.
+    async with EditStream(send_message, edit_message, mode="rich") as stream:
+        await stream.consume(tokens())
+    return stream.buffer
 
 
 async def discussion(message: Message, client: AsyncOpenAI, model: str) -> None:
@@ -55,15 +75,12 @@ async def discussion(message: Message, client: AsyncOpenAI, model: str) -> None:
             store.start(thread_id, system=SYSTEM_PROMPT)
         return
 
-    # Answer each comment in a tracked thread, keeping the dialog as context.
+    # Stream the answer into a single reply that is edited as tokens arrive.
     thread_id = message.message_thread_id
     if store.has(thread_id) and message.text:
         store.add(thread_id, "user", message.text)
-        reply = await answer(client, model, store.messages(thread_id))
+        reply = await stream_answer(message, client, model, store.messages(thread_id))
         store.add(thread_id, "assistant", reply)
-        # LLM output is standard Markdown; telegramify_rich() converts it to
-        # Telegram Rich Messages (HTML) sent via the sendRichMessage API.
-        await send_rich(message, reply)
 
 
 async def main() -> None:
