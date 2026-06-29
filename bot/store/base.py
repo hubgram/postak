@@ -28,8 +28,12 @@ class DialogStore(Protocol):
         """Return True (and clear it) if this post was awaiting a forward."""
         ...
 
-    async def start(self, thread_id: int, system: str | None = None) -> None:
-        """Open a dialog for a thread, optionally seeded with a system prompt."""
+    async def start(self, thread_id: int, channel_post_id: int, system: str | None = None) -> None:
+        """Open a dialog for a thread, recording its channel post id and optional system."""
+        ...
+
+    async def channel_message(self, thread_id: int) -> int | None:
+        """The channel post id that opened this thread (to edit its title), or None."""
         ...
 
     async def has(self, thread_id: int) -> bool:

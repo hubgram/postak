@@ -22,7 +22,10 @@ class SqliteDialogStore:
         await self._db.executescript(
             """
             CREATE TABLE IF NOT EXISTS pending (channel_post_id INTEGER PRIMARY KEY);
-            CREATE TABLE IF NOT EXISTS threads (thread_id INTEGER PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS threads (
+                thread_id INTEGER PRIMARY KEY,
+                channel_post_id INTEGER NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 thread_id INTEGER NOT NULL,
@@ -52,9 +55,10 @@ class SqliteDialogStore:
         await self._conn.commit()
         return cursor.rowcount > 0
 
-    async def start(self, thread_id: int, system: str | None = None) -> None:
+    async def start(self, thread_id: int, channel_post_id: int, system: str | None = None) -> None:
         await self._conn.execute(
-            "INSERT OR IGNORE INTO threads (thread_id) VALUES (?)", (thread_id,)
+            "INSERT OR IGNORE INTO threads (thread_id, channel_post_id) VALUES (?, ?)",
+            (thread_id, channel_post_id),
         )
         if system:
             await self._conn.execute(
@@ -62,6 +66,13 @@ class SqliteDialogStore:
                 (thread_id, system),
             )
         await self._conn.commit()
+
+    async def channel_message(self, thread_id: int) -> int | None:
+        cursor = await self._conn.execute(
+            "SELECT channel_post_id FROM threads WHERE thread_id = ?", (thread_id,)
+        )
+        row = await cursor.fetchone()
+        return row[0] if row else None
 
     async def has(self, thread_id: int) -> bool:
         cursor = await self._conn.execute("SELECT 1 FROM threads WHERE thread_id = ?", (thread_id,))

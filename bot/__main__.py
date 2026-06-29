@@ -1,10 +1,13 @@
 import asyncio
+import contextlib
 import os
+from collections.abc import AsyncIterator
 from typing import cast
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatMemberStatus, ParseMode
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import InputRichMessage, Message, MessageOriginChannel
 from dotenv import load_dotenv
@@ -16,6 +19,11 @@ from bot.store import DialogStore, SqliteDialogStore, create_store
 
 SYSTEM_PROMPT = "You are a helpful assistant replying to comments on a Telegram post."
 NEW_MESSAGE = "**💬 New Conversation**\n\n_Reply to this message to chat with AI_\\."
+FIRST_PROMPT = (
+    "This is the first message of a new conversation. On the first line, write a "
+    "short title (3-6 words) for it. From the next line onward, write your answer."
+)
+TITLE_MAX = 100
 
 
 async def start_conversation(bot: Bot, channel_id: int, store: DialogStore) -> None:
@@ -55,23 +63,23 @@ def forwarded_channel_post_id(message: Message) -> int | None:
     return message.forward_from_message_id
 
 
-async def stream_answer(
-    message: Message, client: AsyncOpenAI, model: str, messages: list[dict[str, str]]
-) -> str:
-    """Stream the LLM answer into one reply, editing it live. Returns the full text."""
+async def completion_tokens(
+    client: AsyncOpenAI, model: str, messages: list[dict[str, str]]
+) -> AsyncIterator[str]:
     completion = await client.chat.completions.create(
         model=model,
         messages=cast(list[ChatCompletionMessageParam], messages),
         stream=True,
     )
+    async for chunk in completion:
+        if delta := chunk.choices[0].delta.content:
+            yield delta
 
+
+async def stream_tokens(message: Message, tokens: AsyncIterator[str]) -> str:
+    """Stream an async token iterator into one reply via EditStream; return the text."""
     bot = message.bot
     assert bot is not None  # always set on messages received in a handler
-
-    async def tokens():
-        async for chunk in completion:
-            if delta := chunk.choices[0].delta.content:
-                yield delta
 
     async def send_message(payload) -> int:
         sent = await message.reply_rich(InputRichMessage(**payload.rich_message.to_dict()))
@@ -84,29 +92,100 @@ async def stream_answer(
             message_id=message_id,
         )
 
-    # rich mode: send the first rich message, then stream edits via
-    # editMessageText(rich_message=...). EditStream throttles to Telegram's 1s limit.
     async with EditStream(send_message, edit_message, mode="rich") as stream:
-        await stream.consume(tokens())
+        await stream.consume(tokens)
     return stream.buffer
 
 
-async def discussion(message: Message, client: AsyncOpenAI, model: str, store: DialogStore) -> None:
+async def stream_answer(
+    message: Message, client: AsyncOpenAI, model: str, messages: list[dict[str, str]]
+) -> str:
+    return await stream_tokens(message, completion_tokens(client, model, messages))
+
+
+class TitleSplitter:
+    """Wraps a token stream: captures the first line as the title, streams the rest."""
+
+    def __init__(self, tokens: AsyncIterator[str]) -> None:
+        self._tokens = tokens
+        self.title = ""
+
+    async def stream(self) -> AsyncIterator[str]:
+        buffer = ""
+        streaming = False
+        async for token in self._tokens:
+            if streaming:
+                yield token
+                continue
+            buffer += token
+            if "\n" in buffer:
+                title, _, rest = buffer.partition("\n")
+                self.title = title.strip()[:TITLE_MAX]
+                streaming = True
+                if rest:
+                    yield rest
+        if not streaming:  # no newline arrived: the whole reply was the title line
+            self.title = buffer.strip()[:TITLE_MAX]
+
+
+def is_first_message(history: list[dict[str, str]]) -> bool:
+    """True when the assistant has not yet replied in this thread."""
+    return not any(m["role"] == "assistant" for m in history)
+
+
+def build_title_messages(history: list[dict[str, str]]) -> list[dict[str, str]]:
+    """History with the title-generation instruction folded into the system prompt."""
+    system = f"{SYSTEM_PROMPT}\n\n{FIRST_PROMPT}"
+    return [{"role": "system", "content": system}, *(m for m in history if m["role"] != "system")]
+
+
+async def set_channel_title(bot: Bot, channel_id: int, message_id: int | None, title: str) -> None:
+    if message_id is None or not title:
+        return
+    # Ignore edit failures: channel post deleted, not editable, or unchanged.
+    with contextlib.suppress(TelegramBadRequest):
+        await bot.edit_message_text(
+            title, chat_id=channel_id, message_id=message_id, parse_mode=None
+        )
+
+
+async def discussion(
+    message: Message,
+    bot: Bot,
+    client: AsyncOpenAI,
+    model: str,
+    store: DialogStore,
+    target_channel_id: int,
+) -> None:
     # A channel post is auto-forwarded into the discussion group as the root of
     # its comment thread. If it came from a /new post, open a dialog for it.
     if message.is_automatic_forward:
         channel_post_id = forwarded_channel_post_id(message)
         if channel_post_id is not None and await store.take_pending(channel_post_id):
-            await store.start(message.message_id, system=SYSTEM_PROMPT)
+            await store.start(message.message_id, channel_post_id, system=SYSTEM_PROMPT)
         return
 
-    # Stream the answer into a single reply, using the windowed dialog as context.
     thread_id = message.message_thread_id
     if thread_id is not None and message.text and await store.has(thread_id):
         await store.add(thread_id, "user", message.text)
         history = await store.history(thread_id)
-        reply = await stream_answer(message, client, model, history)
-        await store.add(thread_id, "assistant", reply)
+        if is_first_message(history):
+            # First message: the LLM returns "title\nanswer". Stream only the answer
+            # (title line hidden), title the channel post, and store the answer.
+            splitter = TitleSplitter(
+                completion_tokens(client, model, build_title_messages(history))
+            )
+            answer = await stream_tokens(message, splitter.stream())
+            channel_post_id = await store.channel_message(thread_id)
+            if answer:
+                await set_channel_title(bot, target_channel_id, channel_post_id, splitter.title)
+                await store.add(thread_id, "assistant", answer)
+            else:
+                # Model gave no answer after the title line; keep the line as the answer.
+                await store.add(thread_id, "assistant", splitter.title)
+        else:
+            reply = await stream_answer(message, client, model, history)
+            await store.add(thread_id, "assistant", reply)
 
 
 def build_store() -> DialogStore:
