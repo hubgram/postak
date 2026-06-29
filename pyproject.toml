@@ -8,6 +8,7 @@ license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     "aiogram>=3.29.1",
+    "aiosqlite>=0.22.1",
     "openai>=2.44.0",
     "python-dotenv>=1.2.2",
     "telegramify-markdown>=1.2.0",

@@ -12,20 +12,15 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 from telegramify_markdown.stream import EditStream
 
-from bot.store import DialogStore
+from bot.store import DialogStore, InMemoryDialogStore, SqliteDialogStore
 
 SYSTEM_PROMPT = "You are a helpful assistant replying to comments on a Telegram post."
 NEW_MESSAGE = "**💬 New Conversation**\n\n_Reply to this message to chat with AI_\\."
 
-# Channel post id -> discussion thread id.
-threads: dict[int, int | None] = {}
-# Per-thread chat dialogs.
-store = DialogStore()
 
-
-async def new(message: Message) -> None:
+async def new(message: Message, store: DialogStore) -> None:
     sent = await message.answer(NEW_MESSAGE)
-    threads[sent.message_id] = None
+    await store.mark_pending(sent.message_id)
 
 
 def forwarded_channel_post_id(message: Message) -> int | None:
@@ -71,23 +66,29 @@ async def stream_answer(
     return stream.buffer
 
 
-async def discussion(message: Message, client: AsyncOpenAI, model: str) -> None:
+async def discussion(message: Message, client: AsyncOpenAI, model: str, store: DialogStore) -> None:
     # A channel post is auto-forwarded into the discussion group as the root of
-    # its comment thread. If it came from a /new post, map channel id -> thread id
-    # and open a dialog for it.
+    # its comment thread. If it came from a /new post, open a dialog for it.
     if message.is_automatic_forward:
-        if (channel_post_id := forwarded_channel_post_id(message)) in threads:
-            new_thread_id = message.message_id
-            threads[channel_post_id] = new_thread_id
-            store.start(new_thread_id, system=SYSTEM_PROMPT)
+        channel_post_id = forwarded_channel_post_id(message)
+        if channel_post_id is not None and await store.take_pending(channel_post_id):
+            await store.start(message.message_id, system=SYSTEM_PROMPT)
         return
 
-    # Stream the answer into a single reply that is edited as tokens arrive.
+    # Stream the answer into a single reply, using the windowed dialog as context.
     thread_id = message.message_thread_id
-    if thread_id is not None and store.has(thread_id) and message.text:
-        store.add(thread_id, "user", message.text)
-        reply = await stream_answer(message, client, model, store.messages(thread_id))
-        store.add(thread_id, "assistant", reply)
+    if thread_id is not None and message.text and await store.has(thread_id):
+        await store.add(thread_id, "user", message.text)
+        history = await store.history(thread_id)
+        reply = await stream_answer(message, client, model, history)
+        await store.add(thread_id, "assistant", reply)
+
+
+def build_store() -> DialogStore:
+    window = int(os.getenv("HISTORY_WINDOW", "20"))
+    if os.getenv("STORE", "sqlite") == "memory":
+        return InMemoryDialogStore(window=window)
+    return SqliteDialogStore(os.getenv("SQLITE_PATH", "posttalk.db"), window=window)
 
 
 async def main() -> None:
@@ -110,6 +111,10 @@ async def main() -> None:
         api_key=os.getenv("LLM_API_KEY") or "not-needed",
     )
 
+    store = build_store()
+    if isinstance(store, SqliteDialogStore):
+        await store.connect()
+
     bot = Bot(
         token=token,
         default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN_V2),
@@ -118,10 +123,15 @@ async def main() -> None:
     dp = Dispatcher()
     dp["client"] = client
     dp["model"] = model
+    dp["store"] = store
     dp.channel_post.register(new, Command("new"), F.chat.id == target_channel_id)
     dp.message.register(discussion, F.chat.type == "supergroup")
 
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        if isinstance(store, SqliteDialogStore):
+            await store.close()
 
 
 if __name__ == "__main__":
