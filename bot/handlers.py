@@ -66,13 +66,13 @@ async def set_channel_title(bot: Bot, channel_id: int, message_id: int | None, t
         )
 
 
-# One asyncio.Lock per thread so a thread's comments are answered one at a time;
-# different threads still run concurrently.
-_thread_locks: dict[int, asyncio.Lock] = {}
+# One asyncio.Lock per (chat, thread) so a thread's comments are answered one at a
+# time; different threads still run concurrently. thread_id is only unique per chat.
+_thread_locks: dict[tuple[int, int], asyncio.Lock] = {}
 
 
-def thread_lock(thread_id: int) -> asyncio.Lock:
-    return _thread_locks.setdefault(thread_id, asyncio.Lock())
+def thread_lock(chat_id: int, thread_id: int) -> asyncio.Lock:
+    return _thread_locks.setdefault((chat_id, thread_id), asyncio.Lock())
 
 
 async def discussion(
@@ -97,7 +97,7 @@ async def discussion(
 
     # Serialize per thread: never generate two answers for the same thread at once;
     # concurrent comments queue and are answered one by one.
-    async with thread_lock(thread_id):
+    async with thread_lock(message.chat.id, thread_id):
         await store.add(thread_id, "user", message.text)
         history = await store.history(thread_id)
         if is_first_message(history):
