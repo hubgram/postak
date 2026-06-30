@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
 from bot.config import Settings
+from bot.conversation import Conversations
 from bot.handlers import discussion, new, new_from_group
 from bot.store import SqliteDialogStore, create_store
 
@@ -28,12 +29,12 @@ async def main() -> None:
     )
     # The channel's linked discussion group; admins may run /new there too.
     discussion_group_id = (await bot.get_chat(settings.target_channel_id)).linked_chat_id
+    conversations = Conversations(bot, client, settings.model, store, settings.target_channel_id)
 
     dp = Dispatcher()
-    dp["client"] = client
-    dp["model"] = settings.model
     dp["store"] = store
     dp["target_channel_id"] = settings.target_channel_id
+    dp["conversations"] = conversations
     dp.channel_post.register(new, Command("new"), F.chat.id == settings.target_channel_id)
     if discussion_group_id is not None:
         dp.message.register(new_from_group, Command("new"), F.chat.id == discussion_group_id)
