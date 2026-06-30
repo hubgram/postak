@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 
 from aiogram import Bot
@@ -65,6 +66,15 @@ async def set_channel_title(bot: Bot, channel_id: int, message_id: int | None, t
         )
 
 
+# One asyncio.Lock per thread so a thread's comments are answered one at a time;
+# different threads still run concurrently.
+_thread_locks: dict[int, asyncio.Lock] = {}
+
+
+def thread_lock(thread_id: int) -> asyncio.Lock:
+    return _thread_locks.setdefault(thread_id, asyncio.Lock())
+
+
 async def discussion(
     message: Message,
     bot: Bot,
@@ -82,7 +92,12 @@ async def discussion(
         return
 
     thread_id = message.message_thread_id
-    if thread_id is not None and message.text and await store.has(thread_id):
+    if thread_id is None or not message.text or not await store.has(thread_id):
+        return
+
+    # Serialize per thread: never generate two answers for the same thread at once;
+    # concurrent comments queue and are answered one by one.
+    async with thread_lock(thread_id):
         await store.add(thread_id, "user", message.text)
         history = await store.history(thread_id)
         if is_first_message(history):
