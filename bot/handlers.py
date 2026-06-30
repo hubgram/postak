@@ -10,7 +10,7 @@ from bot.store import DialogStore
 async def start_conversation(bot: Bot, channel_id: int, store: DialogStore) -> None:
     """Post the new-conversation message to the channel; its auto-forward opens a thread."""
     sent = await bot.send_message(channel_id, NEW_MESSAGE)
-    await store.mark_pending(sent.message_id)
+    await store.mark_pending((sent.chat.id, sent.message_id))
 
 
 async def new(message: Message, bot: Bot, store: DialogStore) -> None:
@@ -37,24 +37,29 @@ async def new_from_group(
         await start_conversation(bot, target_channel_id, store)
 
 
-def forwarded_channel_post_id(message: Message) -> int | None:
-    """Original channel post id behind an automatic forward, or None."""
+def forwarded_channel_post(message: Message) -> tuple[int, int] | None:
+    """(channel chat id, channel post id) behind an automatic forward, or None."""
     if isinstance(origin := message.forward_origin, MessageOriginChannel):
-        return origin.message_id
-    return message.forward_from_message_id
+        return origin.chat.id, origin.message_id
+    chat, post_id = message.forward_from_chat, message.forward_from_message_id
+    if chat is not None and post_id is not None:
+        return chat.id, post_id
+    return None
 
 
 async def discussion(message: Message, store: DialogStore, conversations: Conversations) -> None:
     # A channel post is auto-forwarded into the discussion group as the root of
     # its comment thread. If it came from a /new post, open a dialog for it.
     if message.is_automatic_forward:
-        channel_post_id = forwarded_channel_post_id(message)
-        if channel_post_id is not None and await store.take_pending(channel_post_id):
-            await store.start(message.message_id, channel_post_id, system=SYSTEM_PROMPT)
+        origin = forwarded_channel_post(message)
+        if origin is not None and await store.take_pending(origin):
+            await store.start(
+                (message.chat.id, message.message_id), origin[1], system=SYSTEM_PROMPT
+            )
         return
 
     thread_id = message.message_thread_id
-    if thread_id is None or not message.text or not await store.has(thread_id):
+    if thread_id is None or not message.text or not await store.has((message.chat.id, thread_id)):
         return
 
     # Hand the comment to the per-thread batching worker.

@@ -1,6 +1,6 @@
 import aiosqlite
 
-from bot.store.base import DEFAULT_WINDOW, Message, window_messages
+from bot.store.base import DEFAULT_WINDOW, Key, Message, window_messages
 
 
 class SqliteDialogStore:
@@ -21,18 +21,25 @@ class SqliteDialogStore:
         self._db = await aiosqlite.connect(self._path)
         await self._db.executescript(
             """
-            CREATE TABLE IF NOT EXISTS pending (channel_post_id INTEGER PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS pending (
+                chat_id INTEGER NOT NULL,
+                channel_post_id INTEGER NOT NULL,
+                PRIMARY KEY (chat_id, channel_post_id)
+            );
             CREATE TABLE IF NOT EXISTS threads (
-                thread_id INTEGER PRIMARY KEY,
-                channel_post_id INTEGER NOT NULL
+                chat_id INTEGER NOT NULL,
+                thread_id INTEGER NOT NULL,
+                channel_post_id INTEGER NOT NULL,
+                PRIMARY KEY (chat_id, thread_id)
             );
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER NOT NULL,
                 thread_id INTEGER NOT NULL,
                 role TEXT NOT NULL,
                 content TEXT NOT NULL
             );
-            CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages (thread_id, id);
+            CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages (chat_id, thread_id, id);
             """
         )
         await self._db.commit()
@@ -42,53 +49,55 @@ class SqliteDialogStore:
             await self._db.close()
             self._db = None
 
-    async def mark_pending(self, channel_post_id: int) -> None:
+    async def mark_pending(self, key: Key) -> None:
         await self._conn.execute(
-            "INSERT OR IGNORE INTO pending (channel_post_id) VALUES (?)", (channel_post_id,)
+            "INSERT OR IGNORE INTO pending (chat_id, channel_post_id) VALUES (?, ?)", key
         )
         await self._conn.commit()
 
-    async def take_pending(self, channel_post_id: int) -> bool:
+    async def take_pending(self, key: Key) -> bool:
         cursor = await self._conn.execute(
-            "DELETE FROM pending WHERE channel_post_id = ?", (channel_post_id,)
+            "DELETE FROM pending WHERE chat_id = ? AND channel_post_id = ?", key
         )
         await self._conn.commit()
         return cursor.rowcount > 0
 
-    async def start(self, thread_id: int, channel_post_id: int, system: str | None = None) -> None:
+    async def start(self, key: Key, channel_post_id: int, system: str | None = None) -> None:
         await self._conn.execute(
-            "INSERT OR IGNORE INTO threads (thread_id, channel_post_id) VALUES (?, ?)",
-            (thread_id, channel_post_id),
+            "INSERT OR IGNORE INTO threads (chat_id, thread_id, channel_post_id) VALUES (?, ?, ?)",
+            (*key, channel_post_id),
         )
         if system:
             await self._conn.execute(
-                "INSERT INTO messages (thread_id, role, content) VALUES (?, 'system', ?)",
-                (thread_id, system),
+                "INSERT INTO messages (chat_id, thread_id, role, content) VALUES (?, ?, ?, ?)",
+                (*key, "system", system),
             )
         await self._conn.commit()
 
-    async def channel_message(self, thread_id: int) -> int | None:
+    async def channel_message(self, key: Key) -> int | None:
         cursor = await self._conn.execute(
-            "SELECT channel_post_id FROM threads WHERE thread_id = ?", (thread_id,)
+            "SELECT channel_post_id FROM threads WHERE chat_id = ? AND thread_id = ?", key
         )
         row = await cursor.fetchone()
         return row[0] if row else None
 
-    async def has(self, thread_id: int) -> bool:
-        cursor = await self._conn.execute("SELECT 1 FROM threads WHERE thread_id = ?", (thread_id,))
+    async def has(self, key: Key) -> bool:
+        cursor = await self._conn.execute(
+            "SELECT 1 FROM threads WHERE chat_id = ? AND thread_id = ?", key
+        )
         return await cursor.fetchone() is not None
 
-    async def add(self, thread_id: int, role: str, content: str) -> None:
+    async def add(self, key: Key, role: str, content: str) -> None:
         await self._conn.execute(
-            "INSERT INTO messages (thread_id, role, content) VALUES (?, ?, ?)",
-            (thread_id, role, content),
+            "INSERT INTO messages (chat_id, thread_id, role, content) VALUES (?, ?, ?, ?)",
+            (*key, role, content),
         )
         await self._conn.commit()
 
-    async def history(self, thread_id: int) -> list[Message]:
+    async def history(self, key: Key) -> list[Message]:
         cursor = await self._conn.execute(
-            "SELECT role, content FROM messages WHERE thread_id = ? ORDER BY id",
-            (thread_id,),
+            "SELECT role, content FROM messages WHERE chat_id = ? AND thread_id = ? ORDER BY id",
+            key,
         )
         rows = await cursor.fetchall()
         messages: list[Message] = [{"role": role, "content": content} for role, content in rows]

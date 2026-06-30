@@ -17,7 +17,7 @@ from bot.llm import (
     stream_answer,
 )
 from bot.rendering import stream_tokens
-from bot.store import DialogStore
+from bot.store import DialogStore, Key
 
 logger = logging.getLogger(__name__)
 
@@ -62,37 +62,36 @@ class Conversations:
         self._model = model
         self._store = store
         self._target_channel_id = target_channel_id
-        self._states: dict[tuple[int, int], ThreadState] = {}
+        self._states: dict[Key, ThreadState] = {}
 
     def enqueue(self, message: Message, thread_id: int) -> None:
-        key = (message.chat.id, thread_id)
+        key: Key = (message.chat.id, thread_id)
         state = self._states.setdefault(key, ThreadState())
         state.pending.append(message)
         if not state.generating:
             state.generating = True
             state.task = asyncio.create_task(self._process(key))
 
-    async def _process(self, key: tuple[int, int]) -> None:
+    async def _process(self, key: Key) -> None:
         state = self._states[key]
-        _, thread_id = key
         try:
             while state.pending:
                 batch = list(state.pending)
                 state.pending.clear()
                 try:
-                    await self._generate(batch, thread_id)
+                    await self._generate(batch, key)
                 except Exception:
                     logger.exception("failed to answer thread %s", key)
         finally:
             state.generating = False
 
-    async def _generate(self, batch: list[Message], thread_id: int) -> None:
+    async def _generate(self, batch: list[Message], key: Key) -> None:
         """Store the batched user comments, generate one reply, and store it."""
         for msg in batch:
             if msg.text:
-                await self._store.add(thread_id, "user", msg.text)
+                await self._store.add(key, "user", msg.text)
         reply_to = batch[-1]  # reply under the most recent comment
-        history = await self._store.history(thread_id)
+        history = await self._store.history(key)
         if is_first_message(history):
             # First message: the LLM returns "title\nanswer". Stream only the answer
             # (title line hidden), title the channel post, and store the answer.
@@ -100,15 +99,15 @@ class Conversations:
                 completion_tokens(self._client, self._model, build_title_messages(history))
             )
             answer = await stream_tokens(reply_to, splitter.stream())
-            channel_post_id = await self._store.channel_message(thread_id)
+            channel_post_id = await self._store.channel_message(key)
             if answer:
                 await set_channel_title(
                     self._bot, self._target_channel_id, channel_post_id, splitter.title
                 )
-                await self._store.add(thread_id, "assistant", answer)
+                await self._store.add(key, "assistant", answer)
             else:
                 # Model gave no answer after the title line; keep the line as the answer.
-                await self._store.add(thread_id, "assistant", splitter.title)
+                await self._store.add(key, "assistant", splitter.title)
         else:
             reply = await stream_answer(reply_to, self._client, self._model, history)
-            await self._store.add(thread_id, "assistant", reply)
+            await self._store.add(key, "assistant", reply)
