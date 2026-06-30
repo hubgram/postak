@@ -5,10 +5,10 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from dotenv import load_dotenv
-from openai import AsyncOpenAI
 
 from bot.config import Settings
 from bot.conversation import Conversations
+from bot.generation import OpenAIGenerator
 from bot.handlers import discussion, new, new_from_group
 from bot.store import SqliteDialogStore, create_store
 
@@ -17,7 +17,9 @@ async def main() -> None:
     load_dotenv()
     settings = Settings.from_env()
 
-    client = AsyncOpenAI(base_url=settings.llm_base_url, api_key=settings.llm_api_key)
+    generator = OpenAIGenerator(
+        model=settings.model, base_url=settings.llm_base_url, api_key=settings.llm_api_key
+    )
 
     store = create_store(settings.database_url, window=settings.history_window)
     if isinstance(store, SqliteDialogStore):
@@ -29,7 +31,7 @@ async def main() -> None:
     )
     # The channel's linked discussion group; admins may run /new there too.
     discussion_group_id = (await bot.get_chat(settings.target_channel_id)).linked_chat_id
-    conversations = Conversations(bot, client, settings.model, store, settings.target_channel_id)
+    conversations = Conversations(generator, store, settings.target_channel_id)
 
     dp = Dispatcher()
     dp["store"] = store

@@ -7,23 +7,19 @@ from dataclasses import dataclass, field
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
-from openai import AsyncOpenAI
 
-from bot.llm import (
-    TitleSplitter,
-    build_title_messages,
-    completion_tokens,
-    is_first_message,
-    stream_answer,
-)
+from bot.generation import Generator
+from bot.llm import TitleSplitter, build_title_messages, is_first_message
 from bot.rendering import stream_tokens
 from bot.store import DialogStore, Key
 
 logger = logging.getLogger(__name__)
 
 
-async def set_channel_title(bot: Bot, channel_id: int, message_id: int | None, title: str) -> None:
-    if message_id is None or not title:
+async def set_channel_title(
+    bot: Bot | None, channel_id: int, message_id: int | None, title: str
+) -> None:
+    if bot is None or message_id is None or not title:
         return
     # Ignore edit failures: channel post deleted, not editable, or unchanged.
     with contextlib.suppress(TelegramBadRequest):
@@ -49,17 +45,8 @@ class Conversations:
     Injected as a dependency instead of using module-level state.
     """
 
-    def __init__(
-        self,
-        bot: Bot,
-        client: AsyncOpenAI,
-        model: str,
-        store: DialogStore,
-        target_channel_id: int,
-    ) -> None:
-        self._bot = bot
-        self._client = client
-        self._model = model
+    def __init__(self, generator: Generator, store: DialogStore, target_channel_id: int) -> None:
+        self._generator = generator
         self._store = store
         self._target_channel_id = target_channel_id
         self._states: dict[Key, ThreadState] = {}
@@ -95,19 +82,17 @@ class Conversations:
         if is_first_message(history):
             # First message: the LLM returns "title\nanswer". Stream only the answer
             # (title line hidden), title the channel post, and store the answer.
-            splitter = TitleSplitter(
-                completion_tokens(self._client, self._model, build_title_messages(history))
-            )
+            splitter = TitleSplitter(self._generator.tokens(build_title_messages(history)))
             answer = await stream_tokens(reply_to, splitter.stream())
             channel_post_id = await self._store.channel_message(key)
             if answer:
                 await set_channel_title(
-                    self._bot, self._target_channel_id, channel_post_id, splitter.title
+                    reply_to.bot, self._target_channel_id, channel_post_id, splitter.title
                 )
                 await self._store.add(key, "assistant", answer)
             else:
                 # Model gave no answer after the title line; keep the line as the answer.
                 await self._store.add(key, "assistant", splitter.title)
         else:
-            reply = await stream_answer(reply_to, self._client, self._model, history)
+            reply = await stream_tokens(reply_to, self._generator.tokens(history))
             await self._store.add(key, "assistant", reply)
