@@ -3,11 +3,14 @@
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from aiogram import Bot, Dispatcher, Router
+from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.filters import Command
 
 from bot.config import FIRST_PROMPT, SYSTEM_PROMPT
+from bot.conversation import Conversations
+from bot.handlers import discussion, new
 from bot.store import DialogStore, create_store
 
 # An aiogram message handler: an async callable whose arguments are dependency-injected.
@@ -30,6 +33,7 @@ class PostTalk:
         self.system_prompt = system_prompt
         self.title_prompt = title_prompt
         self.router = Router(name="pt")
+        self.conversations: Conversations | None = None
 
     def add_channel(self, channel_id: int) -> "PostTalk":
         """Register a channel the bot serves; returns self so calls can chain."""
@@ -37,10 +41,17 @@ class PostTalk:
         return self
 
     def setup(self, dp: Dispatcher) -> None:
-        """Attach to an existing dispatcher: include the router and inject services."""
+        """Attach to an existing dispatcher: register handlers and inject services."""
+        # /new in one of our channels opens a new conversation.
+        self.router.channel_post.register(new, Command("new"), F.chat.id.in_(self.channels))
+        # Answering comments needs the conversation engine; registered once it exists.
+        if self.conversations is not None:
+            self.router.message.register(discussion, F.chat.type == "supergroup")
         dp.include_router(self.router)
         dp["pt"] = self
         dp["store"] = self.store
+        if self.conversations is not None:
+            dp["conversations"] = self.conversations
 
     def run(self, token: str) -> None:
         """Convenience entry point: build a Bot + Dispatcher and start polling."""
