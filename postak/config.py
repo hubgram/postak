@@ -36,6 +36,6 @@ class Settings:
             model=required("LLM_MODEL"),
             llm_base_url=os.getenv("LLM_ENDPOINT") or None,
             llm_api_key=os.getenv("LLM_API_KEY") or "not-needed",
-            database_url=os.getenv("DATABASE_URL", "sqlite+aiosqlite:///posttalk.db"),
+            database_url=os.getenv("DATABASE_URL", "sqlite+aiosqlite:///postak.db"),
             history_window=int(os.getenv("HISTORY_WINDOW", "20")),
         )

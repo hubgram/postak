@@ -2,9 +2,9 @@ from aiogram import Bot
 from aiogram.enums import ChatMemberStatus
 from aiogram.types import Message, MessageOriginChannel
 
-from bot.config import NEW_MESSAGE, SYSTEM_PROMPT
-from bot.conversation import Conversations
-from bot.store import DialogStore
+from postak.config import NEW_MESSAGE, SYSTEM_PROMPT
+from postak.conversation import Conversations
+from postak.store import DialogStore
 
 
 async def start_conversation(bot: Bot, channel_id: int, store: DialogStore) -> None:

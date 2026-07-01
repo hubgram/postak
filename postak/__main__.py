@@ -6,11 +6,11 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from dotenv import load_dotenv
 
-from bot.config import Settings
-from bot.conversation import Conversations
-from bot.generation import OpenAIGenerator
-from bot.handlers import discussion, new, new_from_group
-from bot.store import SqliteDialogStore, create_store
+from postak.config import Settings
+from postak.conversation import Conversations
+from postak.generation import OpenAIGenerator
+from postak.handlers import discussion, new, new_from_group
+from postak.store import SqliteDialogStore, create_store
 
 
 async def main() -> None:

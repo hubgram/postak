@@ -8,10 +8,10 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
 
-from bot.generation import Generator
-from bot.llm import TitleSplitter, build_title_messages, is_first_message
-from bot.rendering import stream_tokens
-from bot.store import DialogStore, Key
+from postak.generation import Generator
+from postak.llm import TitleSplitter, build_title_messages, is_first_message
+from postak.rendering import stream_tokens
+from postak.store import DialogStore, Key
 
 logger = logging.getLogger(__name__)
 

@@ -2,7 +2,7 @@
 
 `Generator` is a Protocol so any LLM provider can be plugged in; `OpenAIGenerator`
 is the default, backed by any OpenAI-compatible endpoint. Titling, history windowing
-and delivery to Telegram stay in PostTalk, so a provider only yields text deltas.
+and delivery to Telegram stay in Postak, so a provider only yields text deltas.
 """
 
 from collections.abc import AsyncIterator
@@ -11,7 +11,7 @@ from typing import Any, Protocol, cast
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
-from bot.store import Message
+from postak.store import Message
 
 
 class Generator(Protocol):

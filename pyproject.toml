@@ -1,5 +1,5 @@
 [project]
-name = "PostTalk"
+name = "postak"
 version = "0.1.0"
 description = "AI chat bot that turns your Telegram channel into a chat list"
 readme = "README.md"
@@ -37,7 +37,7 @@ select = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["bot"]
+known-first-party = ["postak"]
 
 [tool.mypy]
 python_version = "3.10"

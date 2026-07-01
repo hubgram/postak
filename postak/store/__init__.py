@@ -1,6 +1,6 @@
-from bot.store.base import DEFAULT_WINDOW, DialogStore, Key, Message, window_messages
-from bot.store.memory import InMemoryDialogStore
-from bot.store.sqlite import SqliteDialogStore
+from postak.store.base import DEFAULT_WINDOW, DialogStore, Key, Message, window_messages
+from postak.store.memory import InMemoryDialogStore
+from postak.store.sqlite import SqliteDialogStore
 
 __all__ = [
     "DEFAULT_WINDOW",

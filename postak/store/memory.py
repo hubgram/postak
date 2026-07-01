@@ -1,4 +1,4 @@
-from bot.store.base import DEFAULT_WINDOW, Key, Message, window_messages
+from postak.store.base import DEFAULT_WINDOW, Key, Message, window_messages
 
 
 class InMemoryDialogStore:

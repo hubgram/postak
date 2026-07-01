@@ -5,8 +5,8 @@ from aiogram.types import Message
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
-from bot.config import FIRST_PROMPT, SYSTEM_PROMPT, TITLE_MAX
-from bot.rendering import stream_tokens
+from postak.config import FIRST_PROMPT, SYSTEM_PROMPT, TITLE_MAX
+from postak.rendering import stream_tokens
 
 
 async def completion_tokens(

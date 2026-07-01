@@ -1,4 +1,4 @@
-"""The PostTalk application facade."""
+"""The Postak application facade."""
 
 import asyncio
 import sys
@@ -8,19 +8,37 @@ from typing import Any
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import Command
+from aiogram.filters import BaseFilter, Command
+from aiogram.types import Message
 
-from bot.config import FIRST_PROMPT, SYSTEM_PROMPT
-from bot.conversation import Conversations
-from bot.generation import Generator
-from bot.handlers import discussion, new
-from bot.store import DialogStore, SqliteDialogStore, create_store
+from postak.config import FIRST_PROMPT, SYSTEM_PROMPT
+from postak.conversation import Conversations
+from postak.generation import Generator
+from postak.handlers import discussion, new, new_from_group
+from postak.store import DialogStore, SqliteDialogStore, create_store
 
 # An aiogram message handler: an async callable whose arguments are dependency-injected.
 Handler = Callable[..., Awaitable[Any]]
 
 
-class PostTalk:
+class FromDiscussion(BaseFilter):
+    """Passes messages in a known discussion group, injecting its channel id.
+
+    Returning a dict is aiogram's way for a filter to add values to the handler's
+    arguments, so `new_from_group` receives `target_channel_id` without a lookup.
+    """
+
+    def __init__(self, channel_of_group: dict[int, int]) -> None:
+        self._channel_of_group = channel_of_group
+
+    async def __call__(self, message: Message) -> bool | dict[str, Any]:
+        channel_id = self._channel_of_group.get(message.chat.id)
+        if channel_id is None:
+            return False
+        return {"target_channel_id": channel_id}
+
+
+class Postak:
     """Assembles the store, model and handlers into a bot you can run."""
 
     def __init__(
@@ -39,8 +57,10 @@ class PostTalk:
         self.title_prompt = title_prompt
         self.router = Router(name="pt")
         self.conversations: Conversations | None = None
+        # discussion-group chat id -> its channel id, filled in on_startup.
+        self.discussion_channel: dict[int, int] = {}
 
-    def add_channel(self, channel_id: int) -> "PostTalk":
+    def add_channel(self, channel_id: int) -> "Postak":
         """Register a channel the bot serves; returns self so calls can chain."""
         self.channels.append(channel_id)
         return self
@@ -53,6 +73,10 @@ class PostTalk:
             self.conversations = Conversations(self.generator, self.store, self.channels[0])
         # /new in one of our channels opens a new conversation.
         self.router.channel_post.register(new, Command("new"), F.chat.id.in_(self.channels))
+        # /new by an admin in a linked discussion group opens one in that channel.
+        self.router.message.register(
+            new_from_group, Command("new"), FromDiscussion(self.discussion_channel)
+        )
         # Answering comments needs the conversation engine; registered once it exists.
         if self.conversations is not None:
             self.router.message.register(discussion, F.chat.type == "supergroup")
@@ -63,13 +87,14 @@ class PostTalk:
             dp["conversations"] = self.conversations
 
     async def on_startup(self, bot: Bot) -> None:
-        """Prepare resources before polling: connect a durable store.
-
-        `bot` is unused for now; resolving each channel's linked discussion group
-        (needed for /new from the group) will use it in a later step.
-        """
+        """Connect a durable store and map each channel to its linked discussion group,
+        so admins can run /new from the group."""
         if isinstance(self.store, SqliteDialogStore):
             await self.store.connect()
+        for channel_id in self.channels:
+            discussion_id = (await bot.get_chat(channel_id)).linked_chat_id
+            if discussion_id is not None:
+                self.discussion_channel[discussion_id] = channel_id
 
     async def on_shutdown(self) -> None:
         """Release resources after polling: close a durable store."""
