@@ -1,5 +1,7 @@
 """The PostTalk application facade."""
 
+import asyncio
+import sys
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -12,7 +14,7 @@ from bot.config import FIRST_PROMPT, SYSTEM_PROMPT
 from bot.conversation import Conversations
 from bot.generation import Generator
 from bot.handlers import discussion, new
-from bot.store import DialogStore, create_store
+from bot.store import DialogStore, SqliteDialogStore, create_store
 
 # An aiogram message handler: an async callable whose arguments are dependency-injected.
 Handler = Callable[..., Awaitable[Any]]
@@ -60,9 +62,43 @@ class PostTalk:
         if self.conversations is not None:
             dp["conversations"] = self.conversations
 
+    async def on_startup(self, bot: Bot) -> None:
+        """Prepare resources before polling: connect a durable store.
+
+        `bot` is unused for now; resolving each channel's linked discussion group
+        (needed for /new from the group) will use it in a later step.
+        """
+        if isinstance(self.store, SqliteDialogStore):
+            await self.store.connect()
+
+    async def on_shutdown(self) -> None:
+        """Release resources after polling: close a durable store."""
+        if isinstance(self.store, SqliteDialogStore):
+            await self.store.close()
+
     def run(self, token: str) -> None:
-        """Convenience entry point: build a Bot + Dispatcher and start polling."""
+        """Convenience entry point: build a Bot + Dispatcher, start up, poll, shut down."""
+        coro = self._run(token)
+        try:
+            import uvloop
+
+        except ImportError:
+            return asyncio.run(coro)
+
+        else:
+            if sys.version_info >= (3, 11):
+                with asyncio.Runner(loop_factory=uvloop.new_event_loop) as runner:
+                    return runner.run(coro)
+            else:  # pragma: no cover
+                uvloop.install()
+                return asyncio.run(coro)
+
+    async def _run(self, token: str) -> None:
         bot = Bot(token, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN_V2))
         dp = Dispatcher()
         self.setup(dp)
-        dp.run_polling(bot)
+        await self.on_startup(bot)
+        try:
+            await dp.start_polling(bot)
+        finally:
+            await self.on_shutdown()
