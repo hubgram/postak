@@ -69,6 +69,8 @@ class Conversations:
                     logger.exception("failed to answer thread %s", key)
         finally:
             state.generating = False
+            if not state.pending and self._states.get(key) is state:
+                del self._states[key]
 
     async def _generate(self, batch: list[Message], key: Key) -> None:
         """Store the batched user comments, generate one reply, and store it."""
