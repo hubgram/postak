@@ -162,6 +162,8 @@ class Postak:
         dp["store"] = self.store
         dp["conversations"] = self.conversations
         dp["access_policy"] = self.access_policy
+        dp.startup.register(self._startup)
+        dp.shutdown.register(self._shutdown)
 
     async def on_startup(self, bot: Bot) -> None:
         """Connect a durable store and map each channel to its linked discussion group,
@@ -178,6 +180,12 @@ class Postak:
         """Release resources after polling: close a durable store."""
         if isinstance(self.store, SqliteDialogStore):
             await self.store.close()
+
+    async def _startup(self, bot: Bot) -> None:
+        await self.on_startup(bot)
+
+    async def _shutdown(self) -> None:
+        await self.on_shutdown()
 
     def run(self, token: str) -> None:
         """Convenience entry point: build a Bot + Dispatcher, start up, poll, shut down."""
@@ -200,11 +208,7 @@ class Postak:
         bot = Bot(token, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN_V2))
         dp = Dispatcher()
         self.setup(dp)
-        await self.on_startup(bot)
-        try:
-            await dp.start_polling(bot)
-        finally:
-            await self.on_shutdown()
+        await dp.start_polling(bot)
 
     async def _apply_initial_access(self) -> None:
         for user_id in self._initial_admins:

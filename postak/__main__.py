@@ -33,12 +33,7 @@ async def main() -> None:
     )
     dp = Dispatcher()
     postak.setup(dp)
-
-    await postak.on_startup(bot)
-    try:
-        await dp.start_polling(bot)
-    finally:
-        await postak.on_shutdown()
+    await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
