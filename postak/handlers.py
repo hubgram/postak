@@ -53,9 +53,7 @@ async def discussion(message: Message, store: DialogStore, conversations: Conver
     if message.is_automatic_forward:
         origin = forwarded_channel_post(message)
         if origin is not None and await store.take_pending(origin):
-            await store.start(
-                (message.chat.id, message.message_id), origin[1], system=SYSTEM_PROMPT
-            )
+            await store.start((message.chat.id, message.message_id), origin, system=SYSTEM_PROMPT)
         return
 
     thread_id = message.message_thread_id

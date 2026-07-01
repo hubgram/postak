@@ -56,7 +56,7 @@ class Postak:
         self.system_prompt = system_prompt
         self.title_prompt = title_prompt
         self.router = Router(name="pt")
-        self.conversations: Conversations | None = None
+        self.conversations = Conversations(self.generator, self.store)
         # discussion-group chat id -> its channel id, filled in on_startup.
         self.discussion_channel: dict[int, int] = {}
 
@@ -67,24 +67,18 @@ class Postak:
 
     def setup(self, dp: Dispatcher) -> None:
         """Attach to an existing dispatcher: register handlers and inject services."""
-        # Build the conversation engine now that the channels are configured. The title
-        # target is the first channel for now; per-channel titling comes with the registry.
-        if self.channels and self.conversations is None:
-            self.conversations = Conversations(self.generator, self.store, self.channels[0])
         # /new in one of our channels opens a new conversation.
         self.router.channel_post.register(new, Command("new"), F.chat.id.in_(self.channels))
         # /new by an admin in a linked discussion group opens one in that channel.
         self.router.message.register(
             new_from_group, Command("new"), FromDiscussion(self.discussion_channel)
         )
-        # Answering comments needs the conversation engine; registered once it exists.
-        if self.conversations is not None:
-            self.router.message.register(discussion, F.chat.type == "supergroup")
+        # A comment in a tracked thread gets answered.
+        self.router.message.register(discussion, F.chat.type == "supergroup")
         dp.include_router(self.router)
         dp["pt"] = self
         dp["store"] = self.store
-        if self.conversations is not None:
-            dp["conversations"] = self.conversations
+        dp["conversations"] = self.conversations
 
     async def on_startup(self, bot: Bot) -> None:
         """Connect a durable store and map each channel to its linked discussion group,

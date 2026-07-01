@@ -8,7 +8,7 @@ class InMemoryDialogStore:
         self._window = window
         self._pending: set[Key] = set()
         self._dialogs: dict[Key, list[Message]] = {}
-        self._channel: dict[Key, int] = {}
+        self._channel: dict[Key, Key] = {}
 
     async def mark_pending(self, key: Key) -> None:
         self._pending.add(key)
@@ -19,11 +19,11 @@ class InMemoryDialogStore:
             return True
         return False
 
-    async def start(self, key: Key, channel_post_id: int, system: str | None = None) -> None:
+    async def start(self, key: Key, channel_post: Key, system: str | None = None) -> None:
         self._dialogs[key] = [{"role": "system", "content": system}] if system else []
-        self._channel[key] = channel_post_id
+        self._channel[key] = channel_post
 
-    async def channel_message(self, key: Key) -> int | None:
+    async def channel_message(self, key: Key) -> Key | None:
         return self._channel.get(key)
 
     async def has(self, key: Key) -> bool:

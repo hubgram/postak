@@ -16,11 +16,10 @@ from postak.store import DialogStore, Key
 logger = logging.getLogger(__name__)
 
 
-async def set_channel_title(
-    bot: Bot | None, channel_id: int, message_id: int | None, title: str
-) -> None:
-    if bot is None or message_id is None or not title:
+async def set_channel_title(bot: Bot | None, channel_post: Key | None, title: str) -> None:
+    if bot is None or channel_post is None or not title:
         return
+    channel_id, message_id = channel_post
     # Ignore edit failures: channel post deleted, not editable, or unchanged.
     with contextlib.suppress(TelegramBadRequest):
         await bot.edit_message_text(
@@ -45,10 +44,9 @@ class Conversations:
     Injected as a dependency instead of using module-level state.
     """
 
-    def __init__(self, generator: Generator, store: DialogStore, target_channel_id: int) -> None:
+    def __init__(self, generator: Generator, store: DialogStore) -> None:
         self._generator = generator
         self._store = store
-        self._target_channel_id = target_channel_id
         self._states: dict[Key, ThreadState] = {}
 
     def enqueue(self, message: Message, thread_id: int) -> None:
@@ -84,11 +82,9 @@ class Conversations:
             # (title line hidden), title the channel post, and store the answer.
             splitter = TitleSplitter(self._generator.tokens(build_title_messages(history)))
             answer = await stream_tokens(reply_to, splitter.stream())
-            channel_post_id = await self._store.channel_message(key)
+            channel_post = await self._store.channel_message(key)
             if answer:
-                await set_channel_title(
-                    reply_to.bot, self._target_channel_id, channel_post_id, splitter.title
-                )
+                await set_channel_title(reply_to.bot, channel_post, splitter.title)
                 await self._store.add(key, "assistant", answer)
             else:
                 # Model gave no answer after the title line; keep the line as the answer.

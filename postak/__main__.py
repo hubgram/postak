@@ -31,7 +31,7 @@ async def main() -> None:
     )
     # The channel's linked discussion group; admins may run /new there too.
     discussion_group_id = (await bot.get_chat(settings.target_channel_id)).linked_chat_id
-    conversations = Conversations(generator, store, settings.target_channel_id)
+    conversations = Conversations(generator, store)
 
     dp = Dispatcher()
     dp["store"] = store

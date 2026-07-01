@@ -29,6 +29,7 @@ class SqliteDialogStore:
             CREATE TABLE IF NOT EXISTS threads (
                 chat_id INTEGER NOT NULL,
                 thread_id INTEGER NOT NULL,
+                channel_chat_id INTEGER NOT NULL,
                 channel_post_id INTEGER NOT NULL,
                 PRIMARY KEY (chat_id, thread_id)
             );
@@ -62,10 +63,11 @@ class SqliteDialogStore:
         await self._conn.commit()
         return cursor.rowcount > 0
 
-    async def start(self, key: Key, channel_post_id: int, system: str | None = None) -> None:
+    async def start(self, key: Key, channel_post: Key, system: str | None = None) -> None:
         await self._conn.execute(
-            "INSERT OR IGNORE INTO threads (chat_id, thread_id, channel_post_id) VALUES (?, ?, ?)",
-            (*key, channel_post_id),
+            "INSERT OR IGNORE INTO threads (chat_id, thread_id, channel_chat_id, channel_post_id) "
+            "VALUES (?, ?, ?, ?)",
+            (*key, *channel_post),
         )
         if system:
             await self._conn.execute(
@@ -74,12 +76,14 @@ class SqliteDialogStore:
             )
         await self._conn.commit()
 
-    async def channel_message(self, key: Key) -> int | None:
+    async def channel_message(self, key: Key) -> Key | None:
         cursor = await self._conn.execute(
-            "SELECT channel_post_id FROM threads WHERE chat_id = ? AND thread_id = ?", key
+            "SELECT channel_chat_id, channel_post_id FROM threads "
+            "WHERE chat_id = ? AND thread_id = ?",
+            key,
         )
         row = await cursor.fetchone()
-        return row[0] if row else None
+        return (row[0], row[1]) if row else None
 
     async def has(self, key: Key) -> bool:
         cursor = await self._conn.execute(
