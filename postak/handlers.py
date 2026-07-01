@@ -1,7 +1,9 @@
 from aiogram import Bot
 from aiogram.enums import ChatMemberStatus
+from aiogram.filters import CommandObject
 from aiogram.types import Message, MessageOriginChannel
 
+from postak.access import AccessPolicy, AccessScope
 from postak.config import NEW_MESSAGE, SYSTEM_PROMPT
 from postak.conversation import Conversations
 from postak.store import DialogStore
@@ -47,18 +49,95 @@ def forwarded_channel_post(message: Message) -> tuple[int, int] | None:
     return None
 
 
-async def discussion(message: Message, store: DialogStore, conversations: Conversations) -> None:
+async def open_discussion(message: Message, store: DialogStore) -> None:
     # A channel post is auto-forwarded into the discussion group as the root of
     # its comment thread. If it came from a /new post, open a dialog for it.
+    origin = forwarded_channel_post(message)
+    if origin is not None and await store.take_pending(origin):
+        await store.start((message.chat.id, message.message_id), origin, system=SYSTEM_PROMPT)
+
+
+async def answer_discussion(
+    message: Message, conversations: Conversations, thread_id: int
+) -> None:
+    # Hand the comment to the per-thread batching worker.
+    conversations.enqueue(message, thread_id)
+
+
+async def discussion(message: Message, store: DialogStore, conversations: Conversations) -> None:
+    """Backward-compatible combined discussion handler."""
     if message.is_automatic_forward:
-        origin = forwarded_channel_post(message)
-        if origin is not None and await store.take_pending(origin):
-            await store.start((message.chat.id, message.message_id), origin, system=SYSTEM_PROMPT)
+        await open_discussion(message, store)
         return
 
     thread_id = message.message_thread_id
     if thread_id is None or not message.text or not await store.has((message.chat.id, thread_id)):
         return
 
-    # Hand the comment to the per-thread batching worker.
-    conversations.enqueue(message, thread_id)
+    await answer_discussion(message, conversations, thread_id)
+
+
+async def postak_admin(
+    message: Message, command: CommandObject, access_policy: AccessPolicy
+) -> None:
+    """Manage Postak admins and access rules via /postak subcommands."""
+    if not await access_policy.can_manage(message):
+        return
+
+    args = (command.args or "").split()
+    if len(args) < 2:
+        await _reply(message, "Usage: /postak admin|access ...")
+        return
+
+    try:
+        match args:
+            case ["admin", "add", user_id]:
+                await access_policy.add_admin(_parse_user_id(user_id))
+                await _reply(message, f"Added admin {user_id}.")
+            case ["admin", "remove", user_id]:
+                await access_policy.remove_admin(_parse_user_id(user_id))
+                await _reply(message, f"Removed admin {user_id}.")
+            case ["access", "allow", user_id, scope_name]:
+                scope = _message_scope(message, scope_name)
+                await access_policy.allow_user(_parse_user_id(user_id), scope)
+                await _reply(message, f"Allowed user {user_id} for {scope.kind}.")
+            case ["access", "revoke", user_id, scope_name]:
+                scope = _message_scope(message, scope_name)
+                await access_policy.revoke_user(_parse_user_id(user_id), scope)
+                await _reply(message, f"Revoked user {user_id} for {scope.kind}.")
+            case ["access", "public", "on", scope_name]:
+                scope = _message_scope(message, scope_name)
+                await access_policy.allow_everyone(scope)
+                await _reply(message, f"Public access is on for {scope.kind}.")
+            case ["access", "public", "off", scope_name]:
+                scope = _message_scope(message, scope_name)
+                await access_policy.restrict_everyone(scope)
+                await _reply(message, f"Public access is off for {scope.kind}.")
+            case _:
+                await _reply(message, "Unknown /postak command.")
+    except ValueError as exc:
+        await _reply(message, str(exc))
+
+
+def _parse_user_id(value: str) -> int:
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"Invalid user id: {value!r}") from exc
+
+
+def _message_scope(message: Message, scope: str) -> AccessScope:
+    if scope == "global":
+        return AccessScope.global_()
+    if scope == "group":
+        return AccessScope.group(message.chat.id)
+    if scope == "thread":
+        thread_id = message.message_thread_id
+        if thread_id is None:
+            raise ValueError("Thread scope is only available inside a discussion thread")
+        return AccessScope.thread(message.chat.id, thread_id)
+    raise ValueError(f"Unknown access scope: {scope!r}")
+
+
+async def _reply(message: Message, text: str) -> None:
+    await message.answer(text, parse_mode=None)

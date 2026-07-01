@@ -1,6 +1,11 @@
 import aiosqlite
 
-from postak.store.base import DEFAULT_WINDOW, Key, Message, window_messages
+from postak.store.base import DEFAULT_WINDOW, AccessKey, Key, Message, window_messages
+
+
+def _scope_values(scope: AccessKey) -> tuple[str, int, int]:
+    kind, chat_id, thread_id = scope
+    return kind, chat_id or 0, thread_id or 0
 
 
 class SqliteDialogStore:
@@ -41,6 +46,23 @@ class SqliteDialogStore:
                 content TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages (chat_id, thread_id, id);
+            CREATE TABLE IF NOT EXISTS access_admins (
+                user_id INTEGER PRIMARY KEY
+            );
+            CREATE TABLE IF NOT EXISTS access_allowed_users (
+                user_id INTEGER NOT NULL,
+                scope_kind TEXT NOT NULL,
+                chat_id INTEGER NOT NULL,
+                thread_id INTEGER NOT NULL,
+                PRIMARY KEY (user_id, scope_kind, chat_id, thread_id)
+            );
+            CREATE TABLE IF NOT EXISTS access_public_scopes (
+                scope_kind TEXT NOT NULL,
+                chat_id INTEGER NOT NULL,
+                thread_id INTEGER NOT NULL,
+                public INTEGER NOT NULL,
+                PRIMARY KEY (scope_kind, chat_id, thread_id)
+            );
             """
         )
         await self._db.commit()
@@ -106,3 +128,63 @@ class SqliteDialogStore:
         rows = await cursor.fetchall()
         messages: list[Message] = [{"role": role, "content": content} for role, content in rows]
         return window_messages(messages, self._window)
+
+    async def add_admin(self, user_id: int) -> None:
+        await self._conn.execute(
+            "INSERT OR IGNORE INTO access_admins (user_id) VALUES (?)",
+            (user_id,),
+        )
+        await self._conn.commit()
+
+    async def remove_admin(self, user_id: int) -> None:
+        await self._conn.execute("DELETE FROM access_admins WHERE user_id = ?", (user_id,))
+        await self._conn.commit()
+
+    async def is_admin(self, user_id: int) -> bool:
+        cursor = await self._conn.execute(
+            "SELECT 1 FROM access_admins WHERE user_id = ?",
+            (user_id,),
+        )
+        return await cursor.fetchone() is not None
+
+    async def allow_user(self, user_id: int, scope: AccessKey) -> None:
+        await self._conn.execute(
+            "INSERT OR IGNORE INTO access_allowed_users "
+            "(user_id, scope_kind, chat_id, thread_id) VALUES (?, ?, ?, ?)",
+            (user_id, *_scope_values(scope)),
+        )
+        await self._conn.commit()
+
+    async def revoke_user(self, user_id: int, scope: AccessKey) -> None:
+        await self._conn.execute(
+            "DELETE FROM access_allowed_users "
+            "WHERE user_id = ? AND scope_kind = ? AND chat_id = ? AND thread_id = ?",
+            (user_id, *_scope_values(scope)),
+        )
+        await self._conn.commit()
+
+    async def is_user_allowed(self, user_id: int, scope: AccessKey) -> bool:
+        cursor = await self._conn.execute(
+            "SELECT 1 FROM access_allowed_users "
+            "WHERE user_id = ? AND scope_kind = ? AND chat_id = ? AND thread_id = ?",
+            (user_id, *_scope_values(scope)),
+        )
+        return await cursor.fetchone() is not None
+
+    async def set_public(self, scope: AccessKey, public: bool) -> None:
+        await self._conn.execute(
+            "INSERT INTO access_public_scopes (scope_kind, chat_id, thread_id, public) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(scope_kind, chat_id, thread_id) DO UPDATE SET public = excluded.public",
+            (*_scope_values(scope), int(public)),
+        )
+        await self._conn.commit()
+
+    async def get_public(self, scope: AccessKey) -> bool | None:
+        cursor = await self._conn.execute(
+            "SELECT public FROM access_public_scopes "
+            "WHERE scope_kind = ? AND chat_id = ? AND thread_id = ?",
+            _scope_values(scope),
+        )
+        row = await cursor.fetchone()
+        return bool(row[0]) if row else None

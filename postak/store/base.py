@@ -8,6 +8,10 @@ Message: TypeAlias = dict[str, str]
 # only unique per chat, so the chat id is always part of the key.
 Key: TypeAlias = tuple[int, int]
 
+# Access scopes are stored as (kind, chat_id, thread_id). Global scopes have no
+# chat/thread, group scopes have a chat, and thread scopes have both.
+AccessKey: TypeAlias = tuple[str, int | None, int | None]
+
 DEFAULT_WINDOW = 20
 
 
@@ -52,3 +56,45 @@ class DialogStore(Protocol):
     async def history(self, key: Key) -> list[Message]:
         """The windowed dialog: system prompt (if any) + most recent messages."""
         ...
+
+
+class AccessStore(Protocol):
+    """Persists admins and scoped access rules."""
+
+    async def add_admin(self, user_id: int) -> None:
+        """Grant Postak admin rights to a Telegram user."""
+        ...
+
+    async def remove_admin(self, user_id: int) -> None:
+        """Remove Postak admin rights from a Telegram user."""
+        ...
+
+    async def is_admin(self, user_id: int) -> bool:
+        """Whether this Telegram user is a Postak admin."""
+        ...
+
+    async def allow_user(self, user_id: int, scope: AccessKey) -> None:
+        """Allow a Telegram user in a specific access scope."""
+        ...
+
+    async def revoke_user(self, user_id: int, scope: AccessKey) -> None:
+        """Remove a Telegram user's explicit access in a scope."""
+        ...
+
+    async def is_user_allowed(self, user_id: int, scope: AccessKey) -> bool:
+        """Whether this Telegram user is explicitly allowed in a scope."""
+        ...
+
+    async def set_public(self, scope: AccessKey, public: bool) -> None:
+        """Set whether everyone may use Postak in a scope."""
+        ...
+
+    async def get_public(self, scope: AccessKey) -> bool | None:
+        """Return a stored public flag, or None when the scope uses defaults."""
+        ...
+
+
+class Store(DialogStore, AccessStore, Protocol):
+    """Combined storage contract used by Postak."""
+
+    pass

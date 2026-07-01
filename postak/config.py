@@ -21,6 +21,7 @@ class Settings:
     llm_api_key: str
     database_url: str
     history_window: int
+    admins: list[int]
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -38,4 +39,9 @@ class Settings:
             llm_api_key=os.getenv("LLM_API_KEY") or "not-needed",
             database_url=os.getenv("DATABASE_URL", "sqlite+aiosqlite:///postak.db"),
             history_window=int(os.getenv("HISTORY_WINDOW", "20")),
+            admins=_parse_int_list(os.getenv("POSTAK_ADMINS", "")),
         )
+
+
+def _parse_int_list(value: str) -> list[int]:
+    return [int(item.strip()) for item in value.split(",") if item.strip()]
