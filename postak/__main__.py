@@ -32,7 +32,7 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN_V2),
     )
     dp = Dispatcher()
-    postak.setup(dp)
+    postak.attach(dp)
     await dp.start_polling(bot)
 
 

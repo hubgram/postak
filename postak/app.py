@@ -138,7 +138,7 @@ class Postak:
         self._initial_public[make_scope(scope, chat_id=chat_id, thread_id=thread_id)] = False
         return self
 
-    def setup(self, dp: Dispatcher) -> None:
+    def attach(self, dp: Dispatcher) -> None:
         """Attach to an existing dispatcher: register handlers and inject services."""
         # /new in one of our channels opens a new conversation.
         self.router.channel_post.register(new, Command("new"), F.chat.id.in_(self.channels))
@@ -207,7 +207,7 @@ class Postak:
     async def _run(self, token: str) -> None:
         bot = Bot(token, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN_V2))
         dp = Dispatcher()
-        self.setup(dp)
+        self.attach(dp)
         await dp.start_polling(bot)
 
     async def _apply_initial_access(self) -> None:

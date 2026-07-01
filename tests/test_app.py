@@ -29,11 +29,11 @@ class RecordingPostak(Postak):
 
 
 class PostakAppTest(unittest.IsolatedAsyncioTestCase):
-    async def test_setup_registers_dispatcher_lifecycle_hooks(self) -> None:
+    async def test_attach_registers_dispatcher_lifecycle_hooks(self) -> None:
         postak = RecordingPostak()
         dp = Dispatcher()
 
-        postak.setup(dp)
+        postak.attach(dp)
 
         startup_callbacks = [handler.callback for handler in dp.startup.handlers]
         shutdown_callbacks = [handler.callback for handler in dp.shutdown.handlers]
