@@ -62,6 +62,17 @@ class FakeBot:
 
 
 class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
+    async def test_empty_postak_command_shows_usage(self) -> None:
+        message = FakeMessage()
+        pt = FakePostak()
+        command = SimpleNamespace(args=None)
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, InMemoryDialogStore())
+
+        self.assertEqual(message.replies, [
+            "Usage: /postak admin|access|model|digest|compress|title|settitle|delete|regenerate ..."
+        ])
+
     async def test_model_set_command_changes_runtime_model(self) -> None:
         message = FakeMessage()
         pt = FakePostak()

@@ -14,6 +14,10 @@ from postak.llm import TitleSplitter, build_title_messages
 from postak.store import DialogStore
 from postak.store import Message as StoreMessage
 
+POSTAK_USAGE = (
+    "Usage: /postak admin|access|model|digest|compress|title|settitle|delete|regenerate ..."
+)
+
 
 class ModelController(Protocol):
     @property
@@ -113,7 +117,7 @@ async def postak_admin(
 
     args = (command.args or "").split()
     if not args:
-        await _reply(message, "Usage: /postak admin|access|model|digest ...")
+        await _reply(message, POSTAK_USAGE)
         return
 
     try:
