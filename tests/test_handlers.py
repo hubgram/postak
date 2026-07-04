@@ -108,6 +108,29 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(message.replies, ["Usage: /postak settitle <text>"])
 
+    async def test_title_command_regenerates_channel_post_title(self) -> None:
+        message = FakeMessage()
+        store = InMemoryDialogStore()
+        pt = FakePostak()
+        pt.generator = FakeGenerator("Fresh title\nignored body")
+        command = SimpleNamespace(args="title")
+        await store.start((10, 20), (30, 40), system="system")
+        await store.add((10, 20), "user", "first")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, store)
+
+        self.assertEqual(message.bot.edits, [("Fresh title", 30, 40, None)])
+        self.assertEqual(message.replies, ["Title changed to Fresh title."])
+
+    async def test_title_command_requires_postak_thread(self) -> None:
+        message = FakeMessage()
+        pt = FakePostak()
+        command = SimpleNamespace(args="title")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, InMemoryDialogStore())
+
+        self.assertEqual(message.replies, ["This thread is not a Postak conversation."])
+
 
 if __name__ == "__main__":
     unittest.main()
