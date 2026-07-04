@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from typing import Protocol
 
 from aiogram import Bot
@@ -8,12 +9,25 @@ from aiogram.types import Message, MessageOriginChannel
 from postak.access import AccessPolicy, AccessScope
 from postak.config import NEW_MESSAGE, SYSTEM_PROMPT
 from postak.conversation import Conversations
+from postak.generation import collect_tokens
 from postak.store import DialogStore
+from postak.store import Message as StoreMessage
 
 
 class ModelController(Protocol):
+    @property
+    def generator(self) -> "CommandGenerator":
+        """The generator used for operational command responses."""
+        ...
+
     def set_model(self, model: str) -> object:
         """Change the model used for future generations."""
+        ...
+
+
+class CommandGenerator(Protocol):
+    def tokens(self, messages: list[StoreMessage]) -> AsyncIterator[str]:
+        """Stream an operational command response."""
         ...
 
 
@@ -86,15 +100,19 @@ async def discussion(message: Message, store: DialogStore, conversations: Conver
 
 
 async def postak_admin(
-    message: Message, command: CommandObject, access_policy: AccessPolicy, pt: ModelController
+    message: Message,
+    command: CommandObject,
+    access_policy: AccessPolicy,
+    pt: ModelController,
+    store: DialogStore,
 ) -> None:
     """Manage Postak admins and access rules via /postak subcommands."""
     if not await access_policy.can_manage(message):
         return
 
     args = (command.args or "").split()
-    if len(args) < 2:
-        await _reply(message, "Usage: /postak admin|access ...")
+    if not args:
+        await _reply(message, "Usage: /postak admin|access|model|digest ...")
         return
 
     try:
@@ -124,6 +142,8 @@ async def postak_admin(
             case ["model", "set", model]:
                 pt.set_model(model)
                 await _reply(message, f"Model changed to {model}.")
+            case ["digest"]:
+                await _digest_thread(message, store, pt.generator)
             case _:
                 await _reply(message, "Unknown /postak command.")
     except (TypeError, ValueError) as exc:
@@ -152,3 +172,31 @@ def _message_scope(message: Message, scope: str) -> AccessScope:
 
 async def _reply(message: Message, text: str) -> None:
     await message.answer(text, parse_mode=None)
+
+
+async def _digest_thread(
+    message: Message, store: DialogStore, generator: CommandGenerator
+) -> None:
+    thread_id = message.message_thread_id
+    if thread_id is None:
+        await _reply(message, "Run /postak digest inside a discussion thread.")
+        return
+
+    key = (message.chat.id, thread_id)
+    if not await store.has(key):
+        await _reply(message, "This thread is not a Postak conversation.")
+        return
+
+    history = await store.history(key)
+    digest_messages: list[StoreMessage] = [
+        {
+            "role": "system",
+            "content": (
+                "Summarize this Telegram discussion thread as a concise digest. "
+                "Include the main points, decisions, and any open questions."
+            ),
+        },
+        *[msg for msg in history if msg["role"] != "system"],
+    ]
+    digest = await collect_tokens(generator.tokens(digest_messages))
+    await _reply(message, digest or "No digest generated.")

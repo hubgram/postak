@@ -20,6 +20,14 @@ class Generator(Protocol):
         ...
 
 
+async def collect_tokens(tokens: AsyncIterator[str]) -> str:
+    """Collect a token stream into a single string."""
+    chunks: list[str] = []
+    async for token in tokens:
+        chunks.append(token)
+    return "".join(chunks)
+
+
 @runtime_checkable
 class ModelConfigurable(Protocol):
     def set_model(self, model: str) -> None:
