@@ -162,6 +162,36 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(message.replies, ["Reply to a message with /postak delete."])
 
+    async def test_regenerate_command_answers_from_latest_user_message(self) -> None:
+        message = FakeMessage()
+        store = InMemoryDialogStore()
+        pt = FakePostak()
+        pt.generator = FakeGenerator("fresh answer")
+        command = SimpleNamespace(args="regenerate")
+        await store.start((10, 20), (30, 40), system="system")
+        await store.add((10, 20), "user", "question")
+        await store.add((10, 20), "assistant", "old answer")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, store)
+
+        self.assertEqual(pt.generator.messages[-1], {"role": "user", "content": "question"})
+        self.assertEqual(message.replies, ["fresh answer"])
+        self.assertEqual((await store.history((10, 20)))[-1], {
+            "role": "assistant",
+            "content": "fresh answer",
+        })
+
+    async def test_regenerate_command_requires_user_message(self) -> None:
+        message = FakeMessage()
+        store = InMemoryDialogStore()
+        pt = FakePostak()
+        command = SimpleNamespace(args="regenerate")
+        await store.start((10, 20), (30, 40), system="system")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, store)
+
+        self.assertEqual(message.replies, ["No user message to regenerate from."])
+
 
 if __name__ == "__main__":
     unittest.main()

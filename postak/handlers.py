@@ -151,6 +151,8 @@ async def postak_admin(
                 await _set_thread_title(message, store, " ".join(title_parts).strip())
             case ["delete"]:
                 await _delete_replied_message(message)
+            case ["regenerate"]:
+                await _regenerate_answer(message, store, pt.generator)
             case _:
                 await _reply(message, "Unknown /postak command.")
     except (TypeError, ValueError) as exc:
@@ -262,3 +264,37 @@ async def _delete_replied_message(message: Message) -> None:
 
     await message.bot.delete_message(message.chat.id, target.message_id)
     await _reply(message, "Deleted message.")
+
+
+async def _regenerate_answer(
+    message: Message, store: DialogStore, generator: CommandGenerator
+) -> None:
+    thread_id = message.message_thread_id
+    if thread_id is None:
+        await _reply(message, "Run /postak regenerate inside a discussion thread.")
+        return
+
+    key = (message.chat.id, thread_id)
+    if not await store.has(key):
+        await _reply(message, "This thread is not a Postak conversation.")
+        return
+
+    history = _history_through_latest_user(await store.history(key))
+    if history is None:
+        await _reply(message, "No user message to regenerate from.")
+        return
+
+    answer = await collect_tokens(generator.tokens(history))
+    if not answer:
+        await _reply(message, "No answer generated.")
+        return
+
+    await store.add(key, "assistant", answer)
+    await _reply(message, answer)
+
+
+def _history_through_latest_user(history: list[StoreMessage]) -> list[StoreMessage] | None:
+    for index in range(len(history) - 1, -1, -1):
+        if history[index]["role"] == "user":
+            return history[: index + 1]
+    return None
