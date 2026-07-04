@@ -129,6 +129,17 @@ class SqliteDialogStore:
         messages: list[Message] = [{"role": role, "content": content} for role, content in rows]
         return window_messages(messages, self._window)
 
+    async def replace_history(self, key: Key, messages: list[Message]) -> None:
+        await self._conn.execute(
+            "DELETE FROM messages WHERE chat_id = ? AND thread_id = ?",
+            key,
+        )
+        await self._conn.executemany(
+            "INSERT INTO messages (chat_id, thread_id, role, content) VALUES (?, ?, ?, ?)",
+            [(*key, message["role"], message["content"]) for message in messages],
+        )
+        await self._conn.commit()
+
     async def add_admin(self, user_id: int) -> None:
         await self._conn.execute(
             "INSERT OR IGNORE INTO access_admins (user_id) VALUES (?)",

@@ -107,5 +107,36 @@ class SqliteAccessStoreTest(unittest.IsolatedAsyncioTestCase):
                 await reopened.close()
 
 
+class DialogStoreTest(unittest.IsolatedAsyncioTestCase):
+    async def test_memory_store_replaces_history(self) -> None:
+        store = InMemoryDialogStore()
+        await store.start((10, 20), (30, 40), system="system")
+        await store.add((10, 20), "user", "old")
+
+        await store.replace_history((10, 20), [{"role": "assistant", "content": "summary"}])
+
+        self.assertEqual(await store.history((10, 20)), [
+            {"role": "assistant", "content": "summary"}
+        ])
+
+    async def test_sqlite_store_replaces_history(self) -> None:
+        with tempfile.NamedTemporaryFile() as db:
+            store = SqliteDialogStore(db.name)
+            await store.connect()
+            try:
+                await store.start((10, 20), (30, 40), system="system")
+                await store.add((10, 20), "user", "old")
+
+                await store.replace_history(
+                    (10, 20), [{"role": "assistant", "content": "summary"}]
+                )
+
+                self.assertEqual(await store.history((10, 20)), [
+                    {"role": "assistant", "content": "summary"}
+                ])
+            finally:
+                await store.close()
+
+
 if __name__ == "__main__":
     unittest.main()

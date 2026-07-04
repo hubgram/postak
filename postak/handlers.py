@@ -145,6 +145,8 @@ async def postak_admin(
                 await _reply(message, f"Model changed to {model}.")
             case ["digest"]:
                 await _digest_thread(message, store, pt.generator)
+            case ["compress"]:
+                await _compress_thread(message, store, pt.generator)
             case ["title"]:
                 await _regenerate_thread_title(message, store, pt.generator)
             case ["settitle", *title_parts]:
@@ -209,6 +211,30 @@ async def _digest_thread(
     ]
     digest = await collect_tokens(generator.tokens(digest_messages))
     await _reply(message, digest or "No digest generated.")
+
+
+async def _compress_thread(
+    message: Message, store: DialogStore, generator: CommandGenerator
+) -> None:
+    thread_id = message.message_thread_id
+    if thread_id is None:
+        await _reply(message, "Run /postak compress inside a discussion thread.")
+        return
+
+    key = (message.chat.id, thread_id)
+    if not await store.has(key):
+        await _reply(message, "This thread is not a Postak conversation.")
+        return
+
+    history = await store.history(key)
+    summary = await collect_tokens(generator.tokens(_compression_messages(history)))
+    if not summary:
+        await _reply(message, "No summary generated.")
+        return
+
+    compacted = _compacted_history(history, summary)
+    await store.replace_history(key, compacted)
+    await _reply(message, "Compressed thread history.")
 
 
 async def _set_thread_title(message: Message, store: DialogStore, title: str) -> None:
@@ -298,3 +324,29 @@ def _history_through_latest_user(history: list[StoreMessage]) -> list[StoreMessa
         if history[index]["role"] == "user":
             return history[: index + 1]
     return None
+
+
+def _compression_messages(history: list[StoreMessage]) -> list[StoreMessage]:
+    return [
+        {
+            "role": "system",
+            "content": (
+                "Compress this Telegram discussion into a durable memory summary for "
+                "future assistant replies. Keep facts, decisions, preferences, open "
+                "questions, and important context. Be concise."
+            ),
+        },
+        *[message for message in history if message["role"] != "system"],
+    ]
+
+
+def _compacted_history(history: list[StoreMessage], summary: str) -> list[StoreMessage]:
+    compacted = [
+        {
+            "role": "assistant",
+            "content": f"Conversation summary so far:\n{summary}",
+        }
+    ]
+    if history and history[0]["role"] == "system":
+        return [history[0], *compacted]
+    return compacted

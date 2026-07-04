@@ -57,6 +57,10 @@ class DialogStore(Protocol):
         """The windowed dialog: system prompt (if any) + most recent messages."""
         ...
 
+    async def replace_history(self, key: Key, messages: list[Message]) -> None:
+        """Replace the stored dialog history for a thread."""
+        ...
+
 
 class AccessStore(Protocol):
     """Persists admins and scoped access rules."""

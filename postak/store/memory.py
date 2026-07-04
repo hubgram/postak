@@ -38,6 +38,9 @@ class InMemoryDialogStore:
     async def history(self, key: Key) -> list[Message]:
         return window_messages(self._dialogs[key], self._window)
 
+    async def replace_history(self, key: Key, messages: list[Message]) -> None:
+        self._dialogs[key] = list(messages)
+
     async def add_admin(self, user_id: int) -> None:
         self._admins.add(user_id)
 

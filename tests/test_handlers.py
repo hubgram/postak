@@ -98,6 +98,36 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(message.replies, ["This thread is not a Postak conversation."])
 
+    async def test_compress_command_replaces_thread_history_with_summary(self) -> None:
+        message = FakeMessage()
+        store = InMemoryDialogStore()
+        pt = FakePostak()
+        pt.generator = FakeGenerator("short summary")
+        command = SimpleNamespace(args="compress")
+        await store.start((10, 20), (30, 40), system="system")
+        await store.add((10, 20), "user", "first")
+        await store.add((10, 20), "assistant", "second")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, store)
+
+        self.assertEqual(await store.history((10, 20)), [
+            {"role": "system", "content": "system"},
+            {
+                "role": "assistant",
+                "content": "Conversation summary so far:\nshort summary",
+            },
+        ])
+        self.assertEqual(message.replies, ["Compressed thread history."])
+
+    async def test_compress_command_requires_postak_thread(self) -> None:
+        message = FakeMessage()
+        pt = FakePostak()
+        command = SimpleNamespace(args="compress")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, InMemoryDialogStore())
+
+        self.assertEqual(message.replies, ["This thread is not a Postak conversation."])
+
     async def test_settitle_command_edits_channel_post_title(self) -> None:
         message = FakeMessage()
         store = InMemoryDialogStore()
