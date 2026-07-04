@@ -8,7 +8,7 @@ from aiogram.types import Message, MessageOriginChannel
 
 from postak.access import AccessPolicy, AccessScope
 from postak.config import NEW_MESSAGE, SYSTEM_PROMPT
-from postak.conversation import Conversations
+from postak.conversation import Conversations, set_channel_title
 from postak.generation import collect_tokens
 from postak.store import DialogStore
 from postak.store import Message as StoreMessage
@@ -144,6 +144,8 @@ async def postak_admin(
                 await _reply(message, f"Model changed to {model}.")
             case ["digest"]:
                 await _digest_thread(message, store, pt.generator)
+            case ["settitle", *title_parts]:
+                await _set_thread_title(message, store, " ".join(title_parts).strip())
             case _:
                 await _reply(message, "Unknown /postak command.")
     except (TypeError, ValueError) as exc:
@@ -200,3 +202,22 @@ async def _digest_thread(
     ]
     digest = await collect_tokens(generator.tokens(digest_messages))
     await _reply(message, digest or "No digest generated.")
+
+
+async def _set_thread_title(message: Message, store: DialogStore, title: str) -> None:
+    if not title:
+        await _reply(message, "Usage: /postak settitle <text>")
+        return
+
+    thread_id = message.message_thread_id
+    if thread_id is None:
+        await _reply(message, "Run /postak settitle inside a discussion thread.")
+        return
+
+    key = (message.chat.id, thread_id)
+    if not await store.has(key):
+        await _reply(message, "This thread is not a Postak conversation.")
+        return
+
+    await set_channel_title(message.bot, await store.channel_message(key), title)
+    await _reply(message, f"Title changed to {title}.")

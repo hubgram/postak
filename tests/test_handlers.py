@@ -35,10 +35,19 @@ class FakeMessage:
     def __init__(self, *, chat_id: int = 10, thread_id: int | None = 20) -> None:
         self.chat = SimpleNamespace(id=chat_id)
         self.message_thread_id = thread_id
+        self.bot = FakeBot()
         self.replies: list[str] = []
 
     async def answer(self, text: str, parse_mode=None) -> None:
         self.replies.append(text)
+
+
+class FakeBot:
+    def __init__(self) -> None:
+        self.edits = []
+
+    async def edit_message_text(self, text, chat_id, message_id, parse_mode=None) -> None:
+        self.edits.append((text, chat_id, message_id, parse_mode))
 
 
 class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
@@ -77,6 +86,27 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
         await postak_admin(message, command, FakeAccessPolicy(), pt, InMemoryDialogStore())
 
         self.assertEqual(message.replies, ["This thread is not a Postak conversation."])
+
+    async def test_settitle_command_edits_channel_post_title(self) -> None:
+        message = FakeMessage()
+        store = InMemoryDialogStore()
+        pt = FakePostak()
+        command = SimpleNamespace(args="settitle Better title")
+        await store.start((10, 20), (30, 40), system="system")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, store)
+
+        self.assertEqual(message.bot.edits, [("Better title", 30, 40, None)])
+        self.assertEqual(message.replies, ["Title changed to Better title."])
+
+    async def test_settitle_command_requires_title_text(self) -> None:
+        message = FakeMessage()
+        pt = FakePostak()
+        command = SimpleNamespace(args="settitle")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, InMemoryDialogStore())
+
+        self.assertEqual(message.replies, ["Usage: /postak settitle <text>"])
 
 
 if __name__ == "__main__":
