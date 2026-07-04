@@ -149,6 +149,8 @@ async def postak_admin(
                 await _regenerate_thread_title(message, store, pt.generator)
             case ["settitle", *title_parts]:
                 await _set_thread_title(message, store, " ".join(title_parts).strip())
+            case ["delete"]:
+                await _delete_replied_message(message)
             case _:
                 await _reply(message, "Unknown /postak command.")
     except (TypeError, ValueError) as exc:
@@ -247,3 +249,16 @@ async def _regenerate_thread_title(
 
     await set_channel_title(message.bot, await store.channel_message(key), splitter.title)
     await _reply(message, f"Title changed to {splitter.title}.")
+
+
+async def _delete_replied_message(message: Message) -> None:
+    target = message.reply_to_message
+    if target is None:
+        await _reply(message, "Reply to a message with /postak delete.")
+        return
+    if message.bot is None:
+        await _reply(message, "Bot is not available for this message.")
+        return
+
+    await message.bot.delete_message(message.chat.id, target.message_id)
+    await _reply(message, "Deleted message.")

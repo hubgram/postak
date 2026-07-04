@@ -32,9 +32,16 @@ class FakeGenerator:
 
 
 class FakeMessage:
-    def __init__(self, *, chat_id: int = 10, thread_id: int | None = 20) -> None:
+    def __init__(
+        self,
+        *,
+        chat_id: int = 10,
+        thread_id: int | None = 20,
+        reply_to_message=None,
+    ) -> None:
         self.chat = SimpleNamespace(id=chat_id)
         self.message_thread_id = thread_id
+        self.reply_to_message = reply_to_message
         self.bot = FakeBot()
         self.replies: list[str] = []
 
@@ -45,9 +52,13 @@ class FakeMessage:
 class FakeBot:
     def __init__(self) -> None:
         self.edits = []
+        self.deletes = []
 
     async def edit_message_text(self, text, chat_id, message_id, parse_mode=None) -> None:
         self.edits.append((text, chat_id, message_id, parse_mode))
+
+    async def delete_message(self, chat_id, message_id) -> None:
+        self.deletes.append((chat_id, message_id))
 
 
 class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
@@ -130,6 +141,26 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
         await postak_admin(message, command, FakeAccessPolicy(), pt, InMemoryDialogStore())
 
         self.assertEqual(message.replies, ["This thread is not a Postak conversation."])
+
+    async def test_delete_command_deletes_replied_message(self) -> None:
+        reply = SimpleNamespace(message_id=99)
+        message = FakeMessage(reply_to_message=reply)
+        pt = FakePostak()
+        command = SimpleNamespace(args="delete")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, InMemoryDialogStore())
+
+        self.assertEqual(message.bot.deletes, [(10, 99)])
+        self.assertEqual(message.replies, ["Deleted message."])
+
+    async def test_delete_command_requires_reply(self) -> None:
+        message = FakeMessage()
+        pt = FakePostak()
+        command = SimpleNamespace(args="delete")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, InMemoryDialogStore())
+
+        self.assertEqual(message.replies, ["Reply to a message with /postak delete."])
 
 
 if __name__ == "__main__":
