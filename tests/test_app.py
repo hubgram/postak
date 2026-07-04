@@ -36,6 +36,14 @@ class PostakAppTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(postak.channels, [10, 20])
 
+    async def test_admin_methods_update_admin_registry(self) -> None:
+        postak = RecordingPostak()
+
+        postak.add_admin(1).remove_admin(1).add_admin(2)
+
+        self.assertEqual(postak.admin_registry.admins, {2})
+        self.assertEqual(postak.admin_registry.removals, {1})
+
     async def test_attach_registers_dispatcher_lifecycle_hooks(self) -> None:
         postak = RecordingPostak()
         dp = Dispatcher()

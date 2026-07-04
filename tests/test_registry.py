@@ -1,6 +1,31 @@
 import unittest
 
-from postak.registry import ChannelRegistry
+from postak.registry import AdminRegistry, ChannelRegistry
+
+
+class AdminRegistryTest(unittest.TestCase):
+    def test_admins_start_from_constructor(self) -> None:
+        registry = AdminRegistry([1, 2, 1])
+
+        self.assertEqual(registry.admins, {1, 2})
+        self.assertEqual(registry.removals, set())
+
+    def test_add_clears_pending_removal(self) -> None:
+        registry = AdminRegistry()
+
+        registry.remove(1)
+        registry.add(1)
+
+        self.assertEqual(registry.admins, {1})
+        self.assertEqual(registry.removals, set())
+
+    def test_remove_clears_pending_add(self) -> None:
+        registry = AdminRegistry([1])
+
+        registry.remove(1)
+
+        self.assertEqual(registry.admins, set())
+        self.assertEqual(registry.removals, {1})
 
 
 class ChannelRegistryTest(unittest.TestCase):

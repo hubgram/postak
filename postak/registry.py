@@ -23,3 +23,27 @@ class ChannelRegistry:
 
     def channel_for_discussion(self, discussion_group_id: int) -> int | None:
         return self._channel_of_group.get(discussion_group_id)
+
+
+class AdminRegistry:
+    """Tracks startup admin grants and removals before the store is connected."""
+
+    def __init__(self, admins: list[int] | None = None) -> None:
+        self._admins: set[int] = set(admins or [])
+        self._removals: set[int] = set()
+
+    @property
+    def admins(self) -> set[int]:
+        return set(self._admins)
+
+    @property
+    def removals(self) -> set[int]:
+        return set(self._removals)
+
+    def add(self, user_id: int) -> None:
+        self._admins.add(user_id)
+        self._removals.discard(user_id)
+
+    def remove(self, user_id: int) -> None:
+        self._admins.discard(user_id)
+        self._removals.add(user_id)

@@ -16,7 +16,7 @@ from postak.config import FIRST_PROMPT, SYSTEM_PROMPT
 from postak.conversation import Conversations
 from postak.generation import Generator
 from postak.handlers import answer_discussion, new, new_from_group, open_discussion, postak_admin
-from postak.registry import ChannelRegistry
+from postak.registry import AdminRegistry, ChannelRegistry
 from postak.store import SqliteDialogStore, Store, create_store
 
 # An aiogram message handler: an async callable whose arguments are dependency-injected.
@@ -62,8 +62,7 @@ class Postak:
         self.router = Router(name="pt")
         self.conversations = Conversations(self.generator, self.store)
         self.access_policy = AccessPolicy(self.store, default_access=default_access)
-        self._initial_admins: set[int] = set(admins or [])
-        self._initial_admin_removals: set[int] = set()
+        self.admin_registry = AdminRegistry(admins)
         self._initial_allowed: set[tuple[int, AccessScope]] = set()
         self._initial_revoked: set[tuple[int, AccessScope]] = set()
         self._initial_public: dict[AccessScope, bool] = {}
@@ -79,14 +78,12 @@ class Postak:
 
     def add_admin(self, user_id: int) -> "Postak":
         """Grant Postak admin rights during startup configuration."""
-        self._initial_admins.add(user_id)
-        self._initial_admin_removals.discard(user_id)
+        self.admin_registry.add(user_id)
         return self
 
     def remove_admin(self, user_id: int) -> "Postak":
         """Remove Postak admin rights during startup configuration."""
-        self._initial_admins.discard(user_id)
-        self._initial_admin_removals.add(user_id)
+        self.admin_registry.remove(user_id)
         return self
 
     def allow_user(
@@ -214,9 +211,9 @@ class Postak:
         await dp.start_polling(bot)
 
     async def _apply_initial_access(self) -> None:
-        for user_id in self._initial_admins:
+        for user_id in self.admin_registry.admins:
             await self.access_policy.add_admin(user_id)
-        for user_id in self._initial_admin_removals:
+        for user_id in self.admin_registry.removals:
             await self.access_policy.remove_admin(user_id)
         for user_id, scope in self._initial_allowed:
             await self.access_policy.allow_user(user_id, scope)
