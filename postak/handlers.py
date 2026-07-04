@@ -1,3 +1,5 @@
+from typing import Protocol
+
 from aiogram import Bot
 from aiogram.enums import ChatMemberStatus
 from aiogram.filters import CommandObject
@@ -7,6 +9,12 @@ from postak.access import AccessPolicy, AccessScope
 from postak.config import NEW_MESSAGE, SYSTEM_PROMPT
 from postak.conversation import Conversations
 from postak.store import DialogStore
+
+
+class ModelController(Protocol):
+    def set_model(self, model: str) -> object:
+        """Change the model used for future generations."""
+        ...
 
 
 async def start_conversation(bot: Bot, channel_id: int, store: DialogStore) -> None:
@@ -78,7 +86,7 @@ async def discussion(message: Message, store: DialogStore, conversations: Conver
 
 
 async def postak_admin(
-    message: Message, command: CommandObject, access_policy: AccessPolicy
+    message: Message, command: CommandObject, access_policy: AccessPolicy, pt: ModelController
 ) -> None:
     """Manage Postak admins and access rules via /postak subcommands."""
     if not await access_policy.can_manage(message):
@@ -113,9 +121,12 @@ async def postak_admin(
                 scope = _message_scope(message, scope_name)
                 await access_policy.restrict_everyone(scope)
                 await _reply(message, f"Public access is off for {scope.kind}.")
+            case ["model", "set", model]:
+                pt.set_model(model)
+                await _reply(message, f"Model changed to {model}.")
             case _:
                 await _reply(message, "Unknown /postak command.")
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         await _reply(message, str(exc))
 
 

@@ -8,6 +8,12 @@ from postak.store import InMemoryDialogStore
 
 
 class StubGenerator:
+    def __init__(self) -> None:
+        self.model = "stub-model"
+
+    def set_model(self, model: str) -> None:
+        self.model = model
+
     async def _tokens(self) -> AsyncIterator[str]:
         yield "ok"
 
@@ -43,6 +49,13 @@ class PostakAppTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(postak.admin_registry.admins, {2})
         self.assertEqual(postak.admin_registry.removals, {1})
+
+    async def test_set_model_updates_configurable_generator(self) -> None:
+        postak = RecordingPostak()
+
+        postak.set_model("next-model")
+
+        self.assertEqual(postak.generator.model, "next-model")
 
     async def test_attach_registers_dispatcher_lifecycle_hooks(self) -> None:
         postak = RecordingPostak()

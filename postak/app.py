@@ -3,7 +3,7 @@
 import asyncio
 import sys
 from collections.abc import Awaitable, Callable
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
@@ -14,7 +14,7 @@ from aiogram.types import Message
 from postak.access import AccessPolicy, AccessScope, CanAnswer, make_scope
 from postak.config import FIRST_PROMPT, SYSTEM_PROMPT
 from postak.conversation import Conversations
-from postak.generation import Generator
+from postak.generation import Generator, ModelConfigurable
 from postak.handlers import answer_discussion, new, new_from_group, open_discussion, postak_admin
 from postak.registry import AdminRegistry, ChannelRegistry
 from postak.store import SqliteDialogStore, Store, create_store
@@ -84,6 +84,13 @@ class Postak:
     def remove_admin(self, user_id: int) -> "Postak":
         """Remove Postak admin rights during startup configuration."""
         self.admin_registry.remove(user_id)
+        return self
+
+    def set_model(self, model: str) -> "Postak":
+        """Change the model used for future generations."""
+        if not isinstance(self.generator, ModelConfigurable):
+            raise TypeError("The configured generator does not support runtime model changes")
+        cast(ModelConfigurable, self.generator).set_model(model)
         return self
 
     def allow_user(

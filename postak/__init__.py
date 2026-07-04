@@ -1,6 +1,6 @@
 from postak.access import AccessPolicy, AccessScope, CanAnswer
 from postak.app import Postak
-from postak.generation import OpenAIGenerator
+from postak.generation import ModelConfigurable, OpenAIGenerator
 from postak.registry import AdminRegistry, ChannelRegistry
 from postak.store import InMemoryDialogStore, SqliteDialogStore, create_store
 
@@ -11,6 +11,7 @@ __all__ = [
     "CanAnswer",
     "ChannelRegistry",
     "InMemoryDialogStore",
+    "ModelConfigurable",
     "OpenAIGenerator",
     "Postak",
     "SqliteDialogStore",
