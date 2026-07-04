@@ -29,6 +29,13 @@ class RecordingPostak(Postak):
 
 
 class PostakAppTest(unittest.IsolatedAsyncioTestCase):
+    async def test_add_channel_updates_channel_registry(self) -> None:
+        postak = RecordingPostak()
+
+        postak.add_channel(10).add_channel(10).add_channel(20)
+
+        self.assertEqual(postak.channels, [10, 20])
+
     async def test_attach_registers_dispatcher_lifecycle_hooks(self) -> None:
         postak = RecordingPostak()
         dp = Dispatcher()

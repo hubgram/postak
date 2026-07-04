@@ -16,6 +16,7 @@ from postak.config import FIRST_PROMPT, SYSTEM_PROMPT
 from postak.conversation import Conversations
 from postak.generation import Generator
 from postak.handlers import answer_discussion, new, new_from_group, open_discussion, postak_admin
+from postak.registry import ChannelRegistry
 from postak.store import SqliteDialogStore, Store, create_store
 
 # An aiogram message handler: an async callable whose arguments are dependency-injected.
@@ -29,11 +30,11 @@ class FromDiscussion(BaseFilter):
     arguments, so `new_from_group` receives `target_channel_id` without a lookup.
     """
 
-    def __init__(self, channel_of_group: dict[int, int]) -> None:
-        self._channel_of_group = channel_of_group
+    def __init__(self, channels: ChannelRegistry) -> None:
+        self._channels = channels
 
     async def __call__(self, message: Message) -> bool | dict[str, Any]:
-        channel_id = self._channel_of_group.get(message.chat.id)
+        channel_id = self._channels.channel_for_discussion(message.chat.id)
         if channel_id is None:
             return False
         return {"target_channel_id": channel_id}
@@ -55,7 +56,7 @@ class Postak:
     ) -> None:
         self.generator = generator
         self.store: Store = create_store(store) if isinstance(store, str) else store
-        self.channels: list[int] = list(channels or [])
+        self.channel_registry = ChannelRegistry(channels)
         self.system_prompt = system_prompt
         self.title_prompt = title_prompt
         self.router = Router(name="pt")
@@ -66,12 +67,14 @@ class Postak:
         self._initial_allowed: set[tuple[int, AccessScope]] = set()
         self._initial_revoked: set[tuple[int, AccessScope]] = set()
         self._initial_public: dict[AccessScope, bool] = {}
-        # discussion-group chat id -> its channel id, filled in on_startup.
-        self.discussion_channel: dict[int, int] = {}
+
+    @property
+    def channels(self) -> list[int]:
+        return self.channel_registry.channels
 
     def add_channel(self, channel_id: int) -> "Postak":
         """Register a channel the bot serves; returns self so calls can chain."""
-        self.channels.append(channel_id)
+        self.channel_registry.add(channel_id)
         return self
 
     def add_admin(self, user_id: int) -> "Postak":
@@ -144,7 +147,7 @@ class Postak:
         self.router.channel_post.register(new, Command("new"), F.chat.id.in_(self.channels))
         # /new by an admin in a linked discussion group opens one in that channel.
         self.router.message.register(
-            new_from_group, Command("new"), FromDiscussion(self.discussion_channel)
+            new_from_group, Command("new"), FromDiscussion(self.channel_registry)
         )
         # Postak admins can manage admins and access rules.
         self.router.message.register(postak_admin, Command("postak"))
@@ -174,7 +177,7 @@ class Postak:
         for channel_id in self.channels:
             discussion_id = (await bot.get_chat(channel_id)).linked_chat_id
             if discussion_id is not None:
-                self.discussion_channel[discussion_id] = channel_id
+                self.channel_registry.link_discussion(channel_id, discussion_id)
 
     async def on_shutdown(self) -> None:
         """Release resources after polling: close a durable store."""
