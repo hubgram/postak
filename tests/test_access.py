@@ -136,6 +136,54 @@ class DialogStoreTest(unittest.IsolatedAsyncioTestCase):
             finally:
                 await store.close()
 
+    async def test_memory_store_windows_history_and_keeps_system(self) -> None:
+        store = InMemoryDialogStore(window=3)
+        await store.start((10, 20), (30, 40), system="system")
+        for index in range(5):
+            await store.add((10, 20), "user", f"m{index}")
+
+        self.assertEqual(await store.history((10, 20)), [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "m2"},
+            {"role": "user", "content": "m3"},
+            {"role": "user", "content": "m4"},
+        ])
+
+    async def test_sqlite_store_windows_history_and_keeps_system(self) -> None:
+        with tempfile.NamedTemporaryFile() as db:
+            store = SqliteDialogStore(db.name, window=3)
+            await store.connect()
+            try:
+                await store.start((10, 20), (30, 40), system="system")
+                for index in range(5):
+                    await store.add((10, 20), "user", f"m{index}")
+
+                self.assertEqual(await store.history((10, 20)), [
+                    {"role": "system", "content": "system"},
+                    {"role": "user", "content": "m2"},
+                    {"role": "user", "content": "m3"},
+                    {"role": "user", "content": "m4"},
+                ])
+            finally:
+                await store.close()
+
+    async def test_sqlite_store_windows_history_without_system(self) -> None:
+        with tempfile.NamedTemporaryFile() as db:
+            store = SqliteDialogStore(db.name, window=3)
+            await store.connect()
+            try:
+                await store.start((10, 20), (30, 40))
+                for index in range(5):
+                    await store.add((10, 20), "user", f"m{index}")
+
+                self.assertEqual(await store.history((10, 20)), [
+                    {"role": "user", "content": "m2"},
+                    {"role": "user", "content": "m3"},
+                    {"role": "user", "content": "m4"},
+                ])
+            finally:
+                await store.close()
+
 
 if __name__ == "__main__":
     unittest.main()

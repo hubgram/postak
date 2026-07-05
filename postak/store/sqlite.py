@@ -1,6 +1,6 @@
 import aiosqlite
 
-from postak.store.base import DEFAULT_WINDOW, AccessKey, Key, Message, window_messages
+from postak.store.base import DEFAULT_WINDOW, AccessKey, Key, Message
 
 
 def _scope_values(scope: AccessKey) -> tuple[str, int, int]:
@@ -121,13 +121,28 @@ class SqliteDialogStore:
         await self._conn.commit()
 
     async def history(self, key: Key) -> list[Message]:
+        # Read only the last `window` rows via the (chat_id, thread_id, id) index
+        # instead of the whole thread, then keep the leading system prompt even
+        # after it has scrolled out of the window (mirrors window_messages).
         cursor = await self._conn.execute(
-            "SELECT role, content FROM messages WHERE chat_id = ? AND thread_id = ? ORDER BY id",
+            "SELECT id, role, content FROM messages WHERE chat_id = ? AND thread_id = ? "
+            "ORDER BY id DESC LIMIT ?",
+            (*key, self._window),
+        )
+        tail = list(await cursor.fetchall())[::-1]
+        messages: list[Message] = [
+            {"role": role, "content": content} for _id, role, content in tail
+        ]
+
+        cursor = await self._conn.execute(
+            "SELECT id, role, content FROM messages WHERE chat_id = ? AND thread_id = ? "
+            "ORDER BY id LIMIT 1",
             key,
         )
-        rows = await cursor.fetchall()
-        messages: list[Message] = [{"role": role, "content": content} for role, content in rows]
-        return window_messages(messages, self._window)
+        first = await cursor.fetchone()
+        if first is not None and first[1] == "system" and (not tail or first[0] < tail[0][0]):
+            messages.insert(0, {"role": first[1], "content": first[2]})
+        return messages
 
     async def replace_history(self, key: Key, messages: list[Message]) -> None:
         await self._conn.execute(
