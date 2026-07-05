@@ -7,6 +7,10 @@ from aiogram.enums import ChatAction
 from aiogram.types import InputRichMessage, Message
 from telegramify_markdown.stream import EditStream
 
+# Compiled once: both run on every stream edit, many times per reply.
+_CELL_TAG = re.compile(r"<(t[hd])\b[^>]*>")
+_ANY_TAG = re.compile(r"<[^>]+>")
+
 
 def fix_html(html: str) -> str:
     """Rewrite telegramify's rich HTML so Telegram renders it natively (verified live):
@@ -19,12 +23,12 @@ def fix_html(html: str) -> str:
     html = html.replace("<li>☑ ", '<li><input type="checkbox"> ')
     html = html.replace("<li>✅ ", '<li><input type="checkbox" checked> ')
     html = html.replace("<table>", "<table bordered striped>")
-    return re.sub(r"<(t[hd])\b[^>]*>", r'<\1 align="center" valign="middle">', html)
+    return _CELL_TAG.sub(r'<\1 align="center" valign="middle">', html)
 
 
 def is_rtl(html: str) -> bool:
     """True if the visible text is predominantly right-to-left (Persian/Arabic/Hebrew)."""
-    text = re.sub(r"<[^>]+>", "", html)
+    text = _ANY_TAG.sub("", html)
     rtl = sum(unicodedata.bidirectional(c) in ("R", "AL") for c in text)
     ltr = sum(unicodedata.bidirectional(c) == "L" for c in text)
     return rtl > ltr
