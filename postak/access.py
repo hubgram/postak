@@ -103,15 +103,21 @@ class AccessPolicy:
             AccessScope.group(chat_id),
             AccessScope.thread(chat_id, thread_id),
         )
-        if any([await self.is_public(scope) for scope in scopes]):
-            return True
+        # Loops rather than any([await ...]) so each check short-circuits on the
+        # first match instead of eagerly running every query.
+        for scope in scopes:
+            if await self.is_public(scope):
+                return True
 
         user = message.from_user
         if user is None:
             return False
         if await self._store.is_admin(user.id):
             return True
-        return any([await self._store.is_user_allowed(user.id, scope.key()) for scope in scopes])
+        for scope in scopes:
+            if await self._store.is_user_allowed(user.id, scope.key()):
+                return True
+        return False
 
 
 class CanAnswer(BaseFilter):
