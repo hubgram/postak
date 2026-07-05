@@ -184,7 +184,9 @@ class Postak:
                 self.channel_registry.link_discussion(channel_id, discussion_id)
 
     async def on_shutdown(self) -> None:
-        """Release resources after polling: close a durable store."""
+        """Release resources after polling: finish in-flight replies, then close a
+        durable store."""
+        await self.conversations.drain()
         if isinstance(self.store, SqliteDialogStore):
             await self.store.close()
 

@@ -57,6 +57,22 @@ class Conversations:
             state.generating = True
             state.task = asyncio.create_task(self._process(key))
 
+    async def drain(self, timeout: float = 30.0) -> None:
+        """Let in-flight generations finish before shutdown, so replies aren't lost.
+
+        Each running task drains its own pending queue, so awaiting the current
+        tasks is enough. Stragglers past the timeout are cancelled rather than left
+        to write into a store that is about to close.
+        """
+        tasks = [state.task for state in self._states.values() if state.task is not None]
+        if not tasks:
+            return
+        _, pending = await asyncio.wait(tasks, timeout=timeout)
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
     async def _process(self, key: Key) -> None:
         state = self._states[key]
         try:

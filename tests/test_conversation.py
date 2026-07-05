@@ -11,12 +11,13 @@ def message(chat_id: int = 10, text: str = "hello") -> SimpleNamespace:
 
 
 class RecordingConversations(Conversations):
-    def __init__(self) -> None:
+    def __init__(self, delay: float = 0.0) -> None:
         super().__init__(generator=SimpleNamespace(), store=SimpleNamespace())
         self.processed: list[Key] = []
+        self._delay = delay
 
     async def _generate(self, batch, key: Key) -> None:
-        await asyncio.sleep(0)
+        await asyncio.sleep(self._delay)
         self.processed.append(key)
 
 
@@ -49,6 +50,26 @@ class ConversationsTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(conversations.processed, [key, key])
         self.assertNotIn(key, conversations._states)
+
+    async def test_drain_awaits_in_flight_generation(self) -> None:
+        conversations = RecordingConversations(delay=0.02)
+        key = (10, 20)
+
+        conversations.enqueue(message(), thread_id=20)
+        # The generation has not finished yet; drain must wait for it.
+        self.assertEqual(conversations.processed, [])
+
+        await conversations.drain()
+
+        self.assertEqual(conversations.processed, [key])
+        self.assertNotIn(key, conversations._states)
+
+    async def test_drain_is_a_noop_without_active_threads(self) -> None:
+        conversations = RecordingConversations()
+
+        await conversations.drain()
+
+        self.assertEqual(conversations.processed, [])
 
 
 if __name__ == "__main__":
