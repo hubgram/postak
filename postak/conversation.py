@@ -110,12 +110,11 @@ class Conversations:
             splitter = TitleSplitter(self._generator.tokens(build_title_messages(history)))
             answer = await stream_tokens(reply_to, splitter.stream())
             channel_post = await self._store.channel_message(key)
-            if answer:
-                await set_channel_title(reply_to.bot, channel_post, splitter.title)
-                await self._store.add(key, "assistant", answer)
-            else:
-                # Model gave no answer after the title line; keep the line as the answer.
-                await self._store.add(key, "assistant", splitter.title)
+            # Title the channel post from the first line either way, so it never
+            # stays "New Conversation". When there is no answer after the title
+            # line, the line doubles as the reply.
+            await set_channel_title(reply_to.bot, channel_post, splitter.title)
+            await self._store.add(key, "assistant", answer or splitter.title)
         else:
             reply = await stream_tokens(reply_to, self._generator.tokens(history))
             await self._store.add(key, "assistant", reply)
