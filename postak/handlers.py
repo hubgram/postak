@@ -91,19 +91,6 @@ async def answer_discussion(
     conversations.enqueue(message, thread_id)
 
 
-async def discussion(message: Message, store: DialogStore, conversations: Conversations) -> None:
-    """Backward-compatible combined discussion handler."""
-    if message.is_automatic_forward:
-        await open_discussion(message, store)
-        return
-
-    thread_id = message.message_thread_id
-    if thread_id is None or not message.text or not await store.has((message.chat.id, thread_id)):
-        return
-
-    await answer_discussion(message, conversations, thread_id)
-
-
 async def postak_admin(
     message: Message,
     command: CommandObject,
