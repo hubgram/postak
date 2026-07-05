@@ -86,7 +86,6 @@ class CanAnswerTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(await can_answer(message(user_id=7)), {"thread_id": 20})
 
-
 class SqliteAccessStoreTest(unittest.IsolatedAsyncioTestCase):
     async def test_access_rules_persist(self) -> None:
         with tempfile.NamedTemporaryFile() as db:

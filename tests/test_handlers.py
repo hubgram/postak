@@ -7,8 +7,11 @@ from postak.store import InMemoryDialogStore
 
 
 class FakeAccessPolicy:
+    def __init__(self, *, can_manage: bool = True) -> None:
+        self._can_manage = can_manage
+
     async def can_manage(self, message) -> bool:
-        return True
+        return self._can_manage
 
 
 class FakePostak:
@@ -45,7 +48,7 @@ class FakeMessage:
         self.bot = FakeBot()
         self.replies: list[str] = []
 
-    async def answer(self, text: str, parse_mode=None) -> None:
+    async def reply(self, text: str, parse_mode=None) -> None:
         self.replies.append(text)
 
 
@@ -62,6 +65,21 @@ class FakeBot:
 
 
 class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
+    async def test_postak_command_replies_when_user_is_not_admin(self) -> None:
+        message = FakeMessage()
+        pt = FakePostak()
+        command = SimpleNamespace(args="digest")
+
+        await postak_admin(
+            message,
+            command,
+            FakeAccessPolicy(can_manage=False),
+            pt,
+            InMemoryDialogStore(),
+        )
+
+        self.assertEqual(message.replies, ["You are not a Postak admin."])
+
     async def test_empty_postak_command_shows_usage(self) -> None:
         message = FakeMessage()
         pt = FakePostak()
@@ -141,6 +159,18 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_settitle_command_edits_channel_post_title(self) -> None:
         message = FakeMessage()
+        store = InMemoryDialogStore()
+        pt = FakePostak()
+        command = SimpleNamespace(args="settitle Better title")
+        await store.start((10, 20), (30, 40), system="system")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, store)
+
+        self.assertEqual(message.bot.edits, [("Better title", 30, 40, None)])
+        self.assertEqual(message.replies, ["Title changed to Better title."])
+
+    async def test_settitle_command_uses_replied_thread_when_thread_id_is_missing(self) -> None:
+        message = FakeMessage(thread_id=None, reply_to_message=SimpleNamespace(message_id=20))
         store = InMemoryDialogStore()
         pt = FakePostak()
         command = SimpleNamespace(args="settitle Better title")

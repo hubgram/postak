@@ -113,6 +113,7 @@ async def postak_admin(
 ) -> None:
     """Manage Postak admins and access rules via /postak subcommands."""
     if not await access_policy.can_manage(message):
+        await _reply(message, "You are not a Postak admin.")
         return
 
     args = (command.args or "").split()
@@ -178,7 +179,7 @@ def _message_scope(message: Message, scope: str) -> AccessScope:
     if scope == "group":
         return AccessScope.group(message.chat.id)
     if scope == "thread":
-        thread_id = message.message_thread_id
+        thread_id = discussion_thread_id(message)
         if thread_id is None:
             raise ValueError("Thread scope is only available inside a discussion thread")
         return AccessScope.thread(message.chat.id, thread_id)
@@ -186,13 +187,13 @@ def _message_scope(message: Message, scope: str) -> AccessScope:
 
 
 async def _reply(message: Message, text: str) -> None:
-    await message.answer(text, parse_mode=None)
+    await message.reply(text, parse_mode=None)
 
 
 async def _digest_thread(
     message: Message, store: DialogStore, generator: CommandGenerator
 ) -> None:
-    thread_id = message.message_thread_id
+    thread_id = discussion_thread_id(message)
     if thread_id is None:
         await _reply(message, "Run /postak digest inside a discussion thread.")
         return
@@ -220,7 +221,7 @@ async def _digest_thread(
 async def _compress_thread(
     message: Message, store: DialogStore, generator: CommandGenerator
 ) -> None:
-    thread_id = message.message_thread_id
+    thread_id = discussion_thread_id(message)
     if thread_id is None:
         await _reply(message, "Run /postak compress inside a discussion thread.")
         return
@@ -246,7 +247,7 @@ async def _set_thread_title(message: Message, store: DialogStore, title: str) ->
         await _reply(message, "Usage: /postak settitle <text>")
         return
 
-    thread_id = message.message_thread_id
+    thread_id = discussion_thread_id(message)
     if thread_id is None:
         await _reply(message, "Run /postak settitle inside a discussion thread.")
         return
@@ -263,7 +264,7 @@ async def _set_thread_title(message: Message, store: DialogStore, title: str) ->
 async def _regenerate_thread_title(
     message: Message, store: DialogStore, generator: CommandGenerator
 ) -> None:
-    thread_id = message.message_thread_id
+    thread_id = discussion_thread_id(message)
     if thread_id is None:
         await _reply(message, "Run /postak title inside a discussion thread.")
         return
@@ -299,7 +300,7 @@ async def _delete_replied_message(message: Message) -> None:
 async def _regenerate_answer(
     message: Message, store: DialogStore, generator: CommandGenerator
 ) -> None:
-    thread_id = message.message_thread_id
+    thread_id = discussion_thread_id(message)
     if thread_id is None:
         await _reply(message, "Run /postak regenerate inside a discussion thread.")
         return
@@ -354,3 +355,10 @@ def _compacted_history(history: list[StoreMessage], summary: str) -> list[StoreM
     if history and history[0]["role"] == "system":
         return [history[0], *compacted]
     return compacted
+
+
+def discussion_thread_id(message: Message) -> int | None:
+    if message.message_thread_id is not None:
+        return message.message_thread_id
+    reply_to = message.reply_to_message
+    return reply_to.message_id if reply_to is not None else None
