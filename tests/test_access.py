@@ -152,6 +152,29 @@ class DialogStoreTest(unittest.IsolatedAsyncioTestCase):
             finally:
                 await store.close()
 
+    async def test_sqlite_get_public_is_cached_including_negatives(self) -> None:
+        with tempfile.NamedTemporaryFile() as db:
+            store = SqliteDialogStore(db.name)
+            await store.connect()
+            try:
+                scope = AccessScope.group(10).key()
+                # A "no row" result is cached, so a later direct insert is not seen.
+                self.assertIsNone(await store.get_public(scope))
+                await store._conn.execute(
+                    "INSERT INTO access_public_scopes "
+                    "(scope_kind, chat_id, thread_id, public) VALUES ('group', 10, 0, 1)"
+                )
+                await store._conn.commit()
+                self.assertIsNone(await store.get_public(scope))
+
+                # set_public refreshes the cache; the flag is then served from it.
+                await store.set_public(scope, True)
+                await store._conn.execute("DELETE FROM access_public_scopes")
+                await store._conn.commit()
+                self.assertTrue(await store.get_public(scope))
+            finally:
+                await store.close()
+
     async def test_sqlite_store_enables_wal_and_busy_timeout(self) -> None:
         with tempfile.NamedTemporaryFile() as db:
             store = SqliteDialogStore(db.name)

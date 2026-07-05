@@ -18,6 +18,9 @@ class SqliteDialogStore:
         # Positive cache of open thread keys. Thread rows are only ever inserted
         # (never deleted), so a True result is permanent and needs no invalidation.
         self._known_threads: set[Key] = set()
+        # Cache of public-scope flags (including "no row" as None), read on every
+        # comment. set_public is the sole writer, so it keeps the cache current.
+        self._public_cache: dict[tuple[str, int, int], bool | None] = {}
 
     @property
     def _conn(self) -> aiosqlite.Connection:
@@ -81,6 +84,7 @@ class SqliteDialogStore:
             await self._db.close()
             self._db = None
         self._known_threads.clear()
+        self._public_cache.clear()
 
     async def mark_pending(self, key: Key) -> None:
         await self._conn.execute(
@@ -214,19 +218,26 @@ class SqliteDialogStore:
         return await cursor.fetchone() is not None
 
     async def set_public(self, scope: AccessKey, public: bool) -> None:
+        values = _scope_values(scope)
         await self._conn.execute(
             "INSERT INTO access_public_scopes (scope_kind, chat_id, thread_id, public) "
             "VALUES (?, ?, ?, ?) "
             "ON CONFLICT(scope_kind, chat_id, thread_id) DO UPDATE SET public = excluded.public",
-            (*_scope_values(scope), int(public)),
+            (*values, int(public)),
         )
         await self._conn.commit()
+        self._public_cache[values] = public
 
     async def get_public(self, scope: AccessKey) -> bool | None:
+        values = _scope_values(scope)
+        if values in self._public_cache:
+            return self._public_cache[values]
         cursor = await self._conn.execute(
             "SELECT public FROM access_public_scopes "
             "WHERE scope_kind = ? AND chat_id = ? AND thread_id = ?",
-            _scope_values(scope),
+            values,
         )
         row = await cursor.fetchone()
-        return bool(row[0]) if row else None
+        result = bool(row[0]) if row else None
+        self._public_cache[values] = result
+        return result
