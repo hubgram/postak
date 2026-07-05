@@ -15,6 +15,9 @@ class SqliteDialogStore:
         self._path = path
         self._window = window
         self._db: aiosqlite.Connection | None = None
+        # Positive cache of open thread keys. Thread rows are only ever inserted
+        # (never deleted), so a True result is permanent and needs no invalidation.
+        self._known_threads: set[Key] = set()
 
     @property
     def _conn(self) -> aiosqlite.Connection:
@@ -77,6 +80,7 @@ class SqliteDialogStore:
         if self._db is not None:
             await self._db.close()
             self._db = None
+        self._known_threads.clear()
 
     async def mark_pending(self, key: Key) -> None:
         await self._conn.execute(
@@ -103,6 +107,7 @@ class SqliteDialogStore:
                 (*key, "system", system),
             )
         await self._conn.commit()
+        self._known_threads.add(key)
 
     async def channel_message(self, key: Key) -> Key | None:
         cursor = await self._conn.execute(
@@ -114,10 +119,15 @@ class SqliteDialogStore:
         return (row[0], row[1]) if row else None
 
     async def has(self, key: Key) -> bool:
+        if key in self._known_threads:
+            return True
         cursor = await self._conn.execute(
             "SELECT 1 FROM threads WHERE chat_id = ? AND thread_id = ?", key
         )
-        return await cursor.fetchone() is not None
+        exists = await cursor.fetchone() is not None
+        if exists:
+            self._known_threads.add(key)
+        return exists
 
     async def add(self, key: Key, role: str, content: str) -> None:
         await self._conn.execute(

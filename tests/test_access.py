@@ -136,6 +136,22 @@ class DialogStoreTest(unittest.IsolatedAsyncioTestCase):
             finally:
                 await store.close()
 
+    async def test_sqlite_has_is_served_from_cache_after_start(self) -> None:
+        with tempfile.NamedTemporaryFile() as db:
+            store = SqliteDialogStore(db.name)
+            await store.connect()
+            try:
+                await store.start((10, 20), (30, 40))
+                # Delete the row behind the store's back; a cached hit must still
+                # answer True without touching the database.
+                await store._conn.execute("DELETE FROM threads")
+                await store._conn.commit()
+
+                self.assertTrue(await store.has((10, 20)))
+                self.assertFalse(await store.has((10, 99)))
+            finally:
+                await store.close()
+
     async def test_sqlite_store_enables_wal_and_busy_timeout(self) -> None:
         with tempfile.NamedTemporaryFile() as db:
             store = SqliteDialogStore(db.name)
