@@ -21,6 +21,14 @@ class RecordingConversations(Conversations):
         self.processed.append(key)
 
 
+class FailingConversations(Conversations):
+    def __init__(self) -> None:
+        super().__init__(generator=SimpleNamespace(), store=SimpleNamespace())
+
+    async def _generate(self, batch, key: Key) -> None:
+        raise RuntimeError("boom")
+
+
 class ConversationsTest(unittest.IsolatedAsyncioTestCase):
     async def test_idle_thread_state_is_evicted_after_processing(self) -> None:
         conversations = RecordingConversations()
@@ -70,6 +78,21 @@ class ConversationsTest(unittest.IsolatedAsyncioTestCase):
         await conversations.drain()
 
         self.assertEqual(conversations.processed, [])
+
+    async def test_failed_generation_notifies_the_user(self) -> None:
+        conversations = FailingConversations()
+        key = (10, 20)
+        replies: list[str] = []
+
+        async def reply(text: str, parse_mode: object = None) -> None:
+            replies.append(text)
+
+        msg = SimpleNamespace(chat=SimpleNamespace(id=10), text="hi", reply=reply)
+        conversations.enqueue(msg, thread_id=20)
+        await conversations._states[key].task
+
+        self.assertEqual(len(replies), 1)
+        self.assertIn("couldn't finish", replies[0])
 
 
 if __name__ == "__main__":

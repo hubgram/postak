@@ -83,10 +83,19 @@ class Conversations:
                     await self._generate(batch, key)
                 except Exception:
                     logger.exception("failed to answer thread %s", key)
+                    await self._notify_failure(batch)
         finally:
             state.generating = False
             if not state.pending and self._states.get(key) is state:
                 del self._states[key]
+
+    async def _notify_failure(self, batch: list[Message]) -> None:
+        """Tell the user a generation failed, so they aren't left with silence."""
+        with contextlib.suppress(Exception):
+            await batch[-1].reply(
+                "\N{WARNING SIGN} I couldn't finish that reply. Please try again.",
+                parse_mode=None,
+            )
 
     async def _generate(self, batch: list[Message], key: Key) -> None:
         """Store the batched user comments, generate one reply, and store it."""
