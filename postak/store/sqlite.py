@@ -24,6 +24,12 @@ class SqliteDialogStore:
 
     async def connect(self) -> None:
         self._db = await aiosqlite.connect(self._path)
+        # WAL lets readers and the writer proceed concurrently; NORMAL trades a
+        # sliver of durability for far fewer fsyncs; busy_timeout avoids spurious
+        # "database is locked" errors when a write briefly contends.
+        await self._db.execute("PRAGMA journal_mode=WAL")
+        await self._db.execute("PRAGMA synchronous=NORMAL")
+        await self._db.execute("PRAGMA busy_timeout=5000")
         await self._db.executescript(
             """
             CREATE TABLE IF NOT EXISTS pending (

@@ -136,6 +136,18 @@ class DialogStoreTest(unittest.IsolatedAsyncioTestCase):
             finally:
                 await store.close()
 
+    async def test_sqlite_store_enables_wal_and_busy_timeout(self) -> None:
+        with tempfile.NamedTemporaryFile() as db:
+            store = SqliteDialogStore(db.name)
+            await store.connect()
+            try:
+                journal = await (await store._conn.execute("PRAGMA journal_mode")).fetchone()
+                timeout = await (await store._conn.execute("PRAGMA busy_timeout")).fetchone()
+                self.assertEqual(journal[0], "wal")
+                self.assertEqual(timeout[0], 5000)
+            finally:
+                await store.close()
+
     async def test_memory_store_windows_history_and_keeps_system(self) -> None:
         store = InMemoryDialogStore(window=3)
         await store.start((10, 20), (30, 40), system="system")
