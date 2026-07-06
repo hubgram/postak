@@ -3,6 +3,7 @@ from typing import Protocol
 
 from aiogram import Bot
 from aiogram.enums import ChatMemberStatus
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandObject
 from aiogram.types import Message, MessageOriginChannel
 
@@ -158,6 +159,8 @@ async def postak_admin(
                 await _reply(message, "Unknown /postak command.")
     except (TypeError, ValueError) as exc:
         await _reply(message, str(exc))
+    except TelegramBadRequest as exc:
+        await _reply(message, f"Telegram error: {exc.message}")
 
 
 def _parse_user_id(value: str) -> int:
@@ -180,8 +183,12 @@ def _message_scope(message: Message, scope: str) -> AccessScope:
     raise ValueError(f"Unknown access scope: {scope!r}")
 
 
+TELEGRAM_TEXT_LIMIT = 4096
+
+
 async def _reply(message: Message, text: str) -> None:
-    await message.reply(text, parse_mode=None)
+    for start in range(0, len(text), TELEGRAM_TEXT_LIMIT):
+        await message.reply(text[start : start + TELEGRAM_TEXT_LIMIT], parse_mode=None)
 
 
 async def _digest_thread(

@@ -101,6 +101,19 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(pt.model, "next")
         self.assertEqual(message.replies, ["Model changed to next."])
 
+    async def test_long_reply_is_split_into_telegram_sized_chunks(self) -> None:
+        message = FakeMessage()
+        store = InMemoryDialogStore()
+        pt = FakePostak()
+        pt.generator = FakeGenerator("x" * 5000)
+        command = SimpleNamespace(args="digest")
+        await store.start((10, 20), (30, 40), system="system")
+        await store.add((10, 20), "user", "hello")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, store)
+
+        self.assertEqual([len(reply) for reply in message.replies], [4096, 904])
+
     async def test_model_get_command_reports_current_model(self) -> None:
         message = FakeMessage()
         pt = FakePostak()
