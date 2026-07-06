@@ -1,3 +1,5 @@
+from importlib.metadata import PackageNotFoundError, version
+
 from postak.access import AccessPolicy, AccessScope, CanAnswer
 from postak.app import Postak
 from postak.generation import ModelConfigurable, OpenAIGenerator
@@ -18,4 +20,7 @@ __all__ = [
     "create_store",
 ]
 
-__version__ = "0.1.0"
+try:
+    __version__ = version("postak")
+except PackageNotFoundError:
+    __version__ = "0.0.0"
