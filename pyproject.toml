@@ -14,6 +14,13 @@ dependencies = [
     "telegramify-markdown>=1.2.0",
 ]
 
+[project.scripts]
+postak = "postak.__main__:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [dependency-groups]
 dev = [
     "mypy>=2.1.0",
