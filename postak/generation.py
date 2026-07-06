@@ -70,5 +70,5 @@ class OpenAIGenerator:
             **self._params,
         )
         async for chunk in stream:
-            if delta := chunk.choices[0].delta.content:
+            if chunk.choices and (delta := chunk.choices[0].delta.content):
                 yield delta
