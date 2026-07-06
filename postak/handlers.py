@@ -12,6 +12,7 @@ from postak.config import NEW_MESSAGE, SYSTEM_PROMPT
 from postak.conversation import Conversations, set_channel_title
 from postak.generation import collect_tokens
 from postak.llm import TitleSplitter, build_title_messages
+from postak.rendering import stream_tokens
 from postak.store import AccessKey, DialogStore
 from postak.store import Message as StoreMessage
 
@@ -262,8 +263,9 @@ async def _digest_thread(
         },
         *[msg for msg in history if msg["role"] != "system"],
     ]
-    digest = await collect_tokens(generator.tokens(digest_messages))
-    await _reply(message, digest or "No digest generated.")
+    digest = await stream_tokens(message, generator.tokens(digest_messages))
+    if not digest:
+        await _reply(message, "No digest generated.")
 
 
 async def _compress_thread(
@@ -363,13 +365,12 @@ async def _regenerate_answer(
         await _reply(message, "No user message to regenerate from.")
         return
 
-    answer = await collect_tokens(generator.tokens(history))
+    answer = await stream_tokens(message, generator.tokens(history))
     if not answer:
         await _reply(message, "No answer generated.")
         return
 
     await store.add(key, "assistant", answer)
-    await _reply(message, answer)
 
 
 def _history_through_latest_user(history: list[StoreMessage]) -> list[StoreMessage] | None:

@@ -1,9 +1,17 @@
 import unittest
 from collections.abc import AsyncIterator
 from types import SimpleNamespace
+from unittest.mock import patch
 
-from postak.handlers import POSTAK_HELP, POSTAK_USAGE, postak_admin
+from postak import handlers as handlers_module
+from postak.handlers import POSTAK_HELP, POSTAK_USAGE, _reply, postak_admin
 from postak.store import InMemoryDialogStore
+
+
+async def drain_stream(message, tokens) -> str:
+    text = "".join([token async for token in tokens])
+    message.streams.append(text)
+    return text
 
 
 class FakeAccessPolicy:
@@ -56,6 +64,7 @@ class FakeMessage:
         self.reply_to_message = reply_to_message
         self.bot = FakeBot()
         self.replies: list[str] = []
+        self.streams: list[str] = []
 
     async def reply(self, text: str, parse_mode=None) -> None:
         self.replies.append(text)
@@ -140,14 +149,8 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_long_reply_is_split_into_telegram_sized_chunks(self) -> None:
         message = FakeMessage()
-        store = InMemoryDialogStore()
-        pt = FakePostak()
-        pt.generator = FakeGenerator("x" * 5000)
-        command = SimpleNamespace(args="digest")
-        await store.start((10, 20), (30, 40), system="system")
-        await store.add((10, 20), "user", "hello")
 
-        await postak_admin(message, command, FakeAccessPolicy(), pt, store)
+        await _reply(message, "x" * 5000)
 
         self.assertEqual([len(reply) for reply in message.replies], [4096, 904])
 
@@ -169,9 +172,10 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
         await store.add((10, 20), "user", "first")
         await store.add((10, 20), "assistant", "second")
 
-        await postak_admin(message, command, FakeAccessPolicy(), pt, store)
+        with patch.object(handlers_module, "stream_tokens", drain_stream):
+            await postak_admin(message, command, FakeAccessPolicy(), pt, store)
 
-        self.assertEqual(message.replies, ["digest text"])
+        self.assertEqual(message.streams, ["digest text"])
         self.assertEqual(pt.generator.messages[-2:], [
             {"role": "user", "content": "first"},
             {"role": "assistant", "content": "second"},
@@ -302,10 +306,11 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
         await store.add((10, 20), "user", "question")
         await store.add((10, 20), "assistant", "old answer")
 
-        await postak_admin(message, command, FakeAccessPolicy(), pt, store)
+        with patch.object(handlers_module, "stream_tokens", drain_stream):
+            await postak_admin(message, command, FakeAccessPolicy(), pt, store)
 
         self.assertEqual(pt.generator.messages[-1], {"role": "user", "content": "question"})
-        self.assertEqual(message.replies, ["fresh answer"])
+        self.assertEqual(message.streams, ["fresh answer"])
         self.assertEqual((await store.history((10, 20)))[-1], {
             "role": "assistant",
             "content": "fresh answer",
