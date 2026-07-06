@@ -16,8 +16,29 @@ from postak.store import AccessKey, DialogStore
 from postak.store import Message as StoreMessage
 
 POSTAK_USAGE = (
-    "Usage: /postak admin|access|model|digest|compress|title|settitle|delete|regenerate ..."
+    "Usage: /postak admin|access|model|digest|compress|title|settitle|delete|regenerate ...\n"
+    "See /postak help for details."
 )
+POSTAK_HELP = """/postak commands:
+
+Access
+- admin list
+- admin add|remove <user_id>
+- access list
+- access allow|revoke <user_id> global|group|thread
+- access public on|off global|group|thread
+
+In a thread
+- digest - summarize the conversation
+- compress - replace history with a compact summary
+- title - regenerate the post title
+- settitle <text> - set the title yourself
+- regenerate - redo the last answer
+- delete - delete the replied-to message
+
+Model
+- model get
+- model set <model>"""
 
 
 class ModelController(Protocol):
@@ -116,6 +137,8 @@ async def postak_admin(
 
     try:
         match args:
+            case ["help"]:
+                await _reply(message, POSTAK_HELP)
             case ["admin", "list"]:
                 admins = await access_policy.admins()
                 await _reply(
@@ -163,7 +186,7 @@ async def postak_admin(
             case ["regenerate"]:
                 await _regenerate_answer(message, store, pt.generator)
             case _:
-                await _reply(message, "Unknown /postak command.")
+                await _reply(message, "Unknown /postak command. Try /postak help.")
     except (TypeError, ValueError) as exc:
         await _reply(message, str(exc))
     except TelegramBadRequest as exc:

@@ -2,7 +2,7 @@ import unittest
 from collections.abc import AsyncIterator
 from types import SimpleNamespace
 
-from postak.handlers import postak_admin
+from postak.handlers import POSTAK_HELP, POSTAK_USAGE, postak_admin
 from postak.store import InMemoryDialogStore
 
 
@@ -96,9 +96,17 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
 
         await postak_admin(message, command, FakeAccessPolicy(), pt, InMemoryDialogStore())
 
-        self.assertEqual(message.replies, [
-            "Usage: /postak admin|access|model|digest|compress|title|settitle|delete|regenerate ..."
-        ])
+        self.assertEqual(message.replies, [POSTAK_USAGE])
+
+    async def test_help_command_lists_subcommands(self) -> None:
+        message = FakeMessage()
+        command = SimpleNamespace(args="help")
+
+        await postak_admin(
+            message, command, FakeAccessPolicy(), FakePostak(), InMemoryDialogStore()
+        )
+
+        self.assertEqual(message.replies, [POSTAK_HELP])
 
     async def test_model_set_command_changes_runtime_model(self) -> None:
         message = FakeMessage()
