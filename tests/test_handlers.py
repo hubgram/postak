@@ -101,6 +101,15 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(pt.model, "next")
         self.assertEqual(message.replies, ["Model changed to next."])
 
+    async def test_model_get_command_reports_current_model(self) -> None:
+        message = FakeMessage()
+        pt = FakePostak()
+        command = SimpleNamespace(args="model get")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, InMemoryDialogStore())
+
+        self.assertEqual(message.replies, ["Current model: old."])
+
     async def test_digest_command_replies_with_thread_digest(self) -> None:
         message = FakeMessage()
         store = InMemoryDialogStore()

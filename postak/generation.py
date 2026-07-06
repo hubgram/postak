@@ -30,6 +30,11 @@ async def collect_tokens(tokens: AsyncIterator[str]) -> str:
 
 @runtime_checkable
 class ModelConfigurable(Protocol):
+    @property
+    def model(self) -> str:
+        """The model used for generations."""
+        ...
+
     def set_model(self, model: str) -> None:
         """Change the model used for future generations."""
         ...

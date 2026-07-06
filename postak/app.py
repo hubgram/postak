@@ -86,6 +86,13 @@ class Postak:
         self.admin_registry.remove(user_id)
         return self
 
+    @property
+    def model(self) -> str:
+        """The model currently used for generations."""
+        if not isinstance(self.generator, ModelConfigurable):
+            raise TypeError("The configured generator does not expose its model")
+        return cast(ModelConfigurable, self.generator).model
+
     def set_model(self, model: str) -> "Postak":
         """Change the model used for future generations."""
         if not isinstance(self.generator, ModelConfigurable):

@@ -25,6 +25,11 @@ class ModelController(Protocol):
         """The generator used for operational command responses."""
         ...
 
+    @property
+    def model(self) -> str:
+        """The model currently used for generations."""
+        ...
+
     def set_model(self, model: str) -> object:
         """Change the model used for future generations."""
         ...
@@ -132,6 +137,8 @@ async def postak_admin(
                 scope = _message_scope(message, scope_name)
                 await access_policy.restrict_everyone(scope)
                 await _reply(message, f"Public access is off for {scope.kind}.")
+            case ["model", "get"]:
+                await _reply(message, f"Current model: {pt.model}.")
             case ["model", "set", model]:
                 pt.set_model(model)
                 await _reply(message, f"Model changed to {model}.")
