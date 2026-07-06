@@ -212,6 +212,10 @@ class SqliteDialogStore:
         self._admin_cache[user_id] = result
         return result
 
+    async def admins(self) -> list[int]:
+        cursor = await self._conn.execute("SELECT user_id FROM access_admins ORDER BY user_id")
+        return [row[0] for row in await cursor.fetchall()]
+
     async def allow_user(self, user_id: int, scope: AccessKey) -> None:
         values = _scope_values(scope)
         await self._conn.execute(
@@ -269,3 +273,23 @@ class SqliteDialogStore:
         result = bool(row[0]) if row else None
         self._public_cache[values] = result
         return result
+
+    async def allowed_users(self) -> list[tuple[int, AccessKey]]:
+        cursor = await self._conn.execute(
+            "SELECT user_id, scope_kind, chat_id, thread_id FROM access_allowed_users "
+            "ORDER BY user_id, scope_kind, chat_id, thread_id"
+        )
+        return [
+            (user_id, (kind, chat_id or None, thread_id or None))
+            for user_id, kind, chat_id, thread_id in await cursor.fetchall()
+        ]
+
+    async def public_scopes(self) -> list[tuple[AccessKey, bool]]:
+        cursor = await self._conn.execute(
+            "SELECT scope_kind, chat_id, thread_id, public FROM access_public_scopes "
+            "ORDER BY scope_kind, chat_id, thread_id"
+        )
+        return [
+            ((kind, chat_id or None, thread_id or None), bool(public))
+            for kind, chat_id, thread_id, public in await cursor.fetchall()
+        ]

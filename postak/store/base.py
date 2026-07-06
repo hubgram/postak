@@ -81,6 +81,10 @@ class AccessStore(Protocol):
         """Whether this Telegram user is a Postak admin."""
         ...
 
+    async def admins(self) -> list[int]:
+        """All Postak admin user ids."""
+        ...
+
     async def allow_user(self, user_id: int, scope: AccessKey) -> None:
         """Allow a Telegram user in a specific access scope."""
         ...
@@ -99,6 +103,14 @@ class AccessStore(Protocol):
 
     async def get_public(self, scope: AccessKey) -> bool | None:
         """Return a stored public flag, or None when the scope uses defaults."""
+        ...
+
+    async def allowed_users(self) -> list[tuple[int, AccessKey]]:
+        """All explicit (user, scope) grants."""
+        ...
+
+    async def public_scopes(self) -> list[tuple[AccessKey, bool]]:
+        """All stored public flags per scope."""
         ...
 
 

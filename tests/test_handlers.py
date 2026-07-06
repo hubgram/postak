@@ -13,6 +13,15 @@ class FakeAccessPolicy:
     async def can_manage(self, message) -> bool:
         return self._can_manage
 
+    async def admins(self) -> list[int]:
+        return [1, 2]
+
+    async def allowed_users(self):
+        return [(7, ("group", 10, None))]
+
+    async def public_scopes(self):
+        return [(("global", None, None), True)]
+
 
 class FakePostak:
     def __init__(self) -> None:
@@ -100,6 +109,26 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(pt.model, "next")
         self.assertEqual(message.replies, ["Model changed to next."])
+
+    async def test_admin_list_reports_admin_ids(self) -> None:
+        message = FakeMessage()
+        command = SimpleNamespace(args="admin list")
+
+        await postak_admin(
+            message, command, FakeAccessPolicy(), FakePostak(), InMemoryDialogStore()
+        )
+
+        self.assertEqual(message.replies, ["Admins: 1, 2"])
+
+    async def test_access_list_reports_rules(self) -> None:
+        message = FakeMessage()
+        command = SimpleNamespace(args="access list")
+
+        await postak_admin(
+            message, command, FakeAccessPolicy(), FakePostak(), InMemoryDialogStore()
+        )
+
+        self.assertEqual(message.replies, ["public global: on\nuser 7: group 10"])
 
     async def test_long_reply_is_split_into_telegram_sized_chunks(self) -> None:
         message = FakeMessage()

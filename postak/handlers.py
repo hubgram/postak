@@ -12,7 +12,7 @@ from postak.config import NEW_MESSAGE, SYSTEM_PROMPT
 from postak.conversation import Conversations, set_channel_title
 from postak.generation import collect_tokens
 from postak.llm import TitleSplitter, build_title_messages
-from postak.store import DialogStore
+from postak.store import AccessKey, DialogStore
 from postak.store import Message as StoreMessage
 
 POSTAK_USAGE = (
@@ -116,6 +116,13 @@ async def postak_admin(
 
     try:
         match args:
+            case ["admin", "list"]:
+                admins = await access_policy.admins()
+                await _reply(
+                    message, "Admins: " + ", ".join(map(str, admins)) if admins else "No admins."
+                )
+            case ["access", "list"]:
+                await _reply(message, await _format_access_rules(access_policy))
             case ["admin", "add", user_id]:
                 await access_policy.add_admin(_parse_user_id(user_id))
                 await _reply(message, f"Added admin {user_id}.")
@@ -161,6 +168,23 @@ async def postak_admin(
         await _reply(message, str(exc))
     except TelegramBadRequest as exc:
         await _reply(message, f"Telegram error: {exc.message}")
+
+
+async def _format_access_rules(access_policy: AccessPolicy) -> str:
+    lines = [
+        f"public {_format_scope(scope)}: {'on' if public else 'off'}"
+        for scope, public in await access_policy.public_scopes()
+    ]
+    lines += [
+        f"user {user_id}: {_format_scope(scope)}"
+        for user_id, scope in await access_policy.allowed_users()
+    ]
+    return "\n".join(lines) or "No access rules."
+
+
+def _format_scope(key: AccessKey) -> str:
+    kind, chat_id, thread_id = key
+    return " ".join([kind, *(str(part) for part in (chat_id, thread_id) if part)])
 
 
 def _parse_user_id(value: str) -> int:

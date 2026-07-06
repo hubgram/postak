@@ -87,6 +87,15 @@ class AccessPolicy:
     async def restrict_everyone(self, scope: AccessScope) -> None:
         await self._store.set_public(scope.key(), False)
 
+    async def admins(self) -> list[int]:
+        return await self._store.admins()
+
+    async def allowed_users(self) -> list[tuple[int, AccessKey]]:
+        return await self._store.allowed_users()
+
+    async def public_scopes(self) -> list[tuple[AccessKey, bool]]:
+        return await self._store.public_scopes()
+
     async def is_public(self, scope: AccessScope) -> bool:
         stored = await self._store.get_public(scope.key())
         if stored is not None:

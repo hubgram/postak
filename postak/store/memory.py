@@ -53,6 +53,9 @@ class InMemoryDialogStore:
     async def is_admin(self, user_id: int) -> bool:
         return user_id in self._admins
 
+    async def admins(self) -> list[int]:
+        return sorted(self._admins)
+
     async def allow_user(self, user_id: int, scope: AccessKey) -> None:
         self._allowed.add((user_id, scope))
 
@@ -67,3 +70,9 @@ class InMemoryDialogStore:
 
     async def get_public(self, scope: AccessKey) -> bool | None:
         return self._public.get(scope)
+
+    async def allowed_users(self) -> list[tuple[int, AccessKey]]:
+        return sorted(self._allowed, key=repr)
+
+    async def public_scopes(self) -> list[tuple[AccessKey, bool]]:
+        return list(self._public.items())
