@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-postak = "postak.__main__:run"
+postak = "postak.__main__:main"
 
 [build-system]
 requires = ["hatchling"]

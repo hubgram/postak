@@ -1,8 +1,3 @@
-import asyncio
-
-from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 from dotenv import load_dotenv
 
 from postak.app import Postak
@@ -11,7 +6,7 @@ from postak.generation import OpenAIGenerator
 from postak.store import create_store
 
 
-async def main() -> None:
+def main() -> None:
     load_dotenv()
     settings = Settings.from_env()
 
@@ -26,19 +21,8 @@ async def main() -> None:
         channels=[settings.target_channel_id],
         admins=settings.admins,
     )
-
-    bot = Bot(
-        settings.bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN_V2),
-    )
-    dp = Dispatcher()
-    postak.attach(dp)
-    await dp.start_polling(bot)
-
-
-def run() -> None:
-    asyncio.run(main())
+    postak.run(settings.bot_token)
 
 
 if __name__ == "__main__":
-    run()
+    main()
