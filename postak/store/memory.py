@@ -35,6 +35,9 @@ class InMemoryDialogStore:
     async def add(self, key: Key, role: str, content: str) -> None:
         self._dialogs[key].append({"role": role, "content": content})
 
+    async def add_many(self, key: Key, messages: list[Message]) -> None:
+        self._dialogs[key].extend(messages)
+
     async def history(self, key: Key) -> list[Message]:
         return window_messages(self._dialogs[key], self._window)
 

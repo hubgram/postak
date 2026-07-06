@@ -140,6 +140,13 @@ class SqliteDialogStore:
         )
         await self._conn.commit()
 
+    async def add_many(self, key: Key, messages: list[Message]) -> None:
+        await self._conn.executemany(
+            "INSERT INTO messages (chat_id, thread_id, role, content) VALUES (?, ?, ?, ?)",
+            [(*key, message["role"], message["content"]) for message in messages],
+        )
+        await self._conn.commit()
+
     async def history(self, key: Key) -> list[Message]:
         # Read only the last `window` rows via the (chat_id, thread_id, id) index
         # instead of the whole thread, then keep the leading system prompt even

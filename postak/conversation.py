@@ -99,9 +99,11 @@ class Conversations:
 
     async def _generate(self, batch: list[Message], key: Key) -> None:
         """Store the batched user comments, generate one reply, and store it."""
-        for msg in batch:
-            if msg.text:
-                await self._store.add(key, "user", msg.text)
+        texts = [msg.text for msg in batch if msg.text]
+        if texts:
+            await self._store.add_many(
+                key, [{"role": "user", "content": text} for text in texts]
+            )
         reply_to = batch[-1]  # reply under the most recent comment
         history = await self._store.history(key)
         if is_first_message(history):

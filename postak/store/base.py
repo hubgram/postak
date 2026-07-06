@@ -53,6 +53,10 @@ class DialogStore(Protocol):
         """Append a message to the thread's dialog."""
         ...
 
+    async def add_many(self, key: Key, messages: list[Message]) -> None:
+        """Append several messages to the thread's dialog in one write."""
+        ...
+
     async def history(self, key: Key) -> list[Message]:
         """The windowed dialog: system prompt (if any) + most recent messages."""
         ...

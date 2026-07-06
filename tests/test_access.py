@@ -146,6 +146,24 @@ class DialogStoreTest(unittest.IsolatedAsyncioTestCase):
             finally:
                 await store.close()
 
+    async def test_sqlite_add_many_appends_in_order(self) -> None:
+        with tempfile.NamedTemporaryFile() as db:
+            store = SqliteDialogStore(db.name)
+            await store.connect()
+            try:
+                await store.start((10, 20), (30, 40))
+                await store.add_many((10, 20), [
+                    {"role": "user", "content": "a"},
+                    {"role": "user", "content": "b"},
+                ])
+
+                self.assertEqual(await store.history((10, 20)), [
+                    {"role": "user", "content": "a"},
+                    {"role": "user", "content": "b"},
+                ])
+            finally:
+                await store.close()
+
     async def test_sqlite_has_is_served_from_cache_after_start(self) -> None:
         with tempfile.NamedTemporaryFile() as db:
             store = SqliteDialogStore(db.name)
