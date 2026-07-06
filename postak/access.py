@@ -94,6 +94,9 @@ class AccessPolicy:
         return scope.kind == "global" and self._default_public
 
     async def can_manage(self, message: Message) -> bool:
+        # An anonymous admin posts as the group itself; only group admins can.
+        if message.sender_chat is not None and message.sender_chat.id == message.chat.id:
+            return True
         user = message.from_user
         return user is not None and await self._store.is_admin(user.id)
 

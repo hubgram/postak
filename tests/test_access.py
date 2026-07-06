@@ -19,6 +19,7 @@ def message(
         chat=SimpleNamespace(id=chat_id),
         message_thread_id=thread_id,
         text=text,
+        sender_chat=None,
     )
 
 
@@ -55,6 +56,15 @@ class AccessPolicyTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(await policy.can_answer(message(user_id=7), 10, 20))
         self.assertFalse(await policy.can_answer(message(user_id=7), 10, 21))
+
+
+    async def test_anonymous_group_admin_can_manage(self) -> None:
+        policy = AccessPolicy(InMemoryDialogStore())
+        anonymous = message(user_id=None)
+        anonymous.sender_chat = SimpleNamespace(id=10)
+
+        self.assertTrue(await policy.can_manage(anonymous))
+        self.assertFalse(await policy.can_manage(message(user_id=None)))
 
 
 class CanAnswerTest(unittest.IsolatedAsyncioTestCase):
