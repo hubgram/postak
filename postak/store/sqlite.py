@@ -164,6 +164,8 @@ class SqliteDialogStore:
         messages: list[Message] = [
             {"role": role, "content": content} for _id, role, content in tail
         ]
+        if len(tail) < self._window:  # the tail already holds the whole thread
+            return messages
 
         cursor = await self._conn.execute(
             "SELECT id, role, content FROM messages WHERE chat_id = ? AND thread_id = ? "
