@@ -180,6 +180,21 @@ class DialogStoreTest(unittest.IsolatedAsyncioTestCase):
             finally:
                 await store.close()
 
+    async def test_sqlite_admin_cache_follows_add_and_remove(self) -> None:
+        with tempfile.NamedTemporaryFile() as db:
+            store = SqliteDialogStore(db.name)
+            await store.connect()
+            try:
+                await store.add_admin(1)
+                await store._conn.execute("DELETE FROM access_admins")
+                await store._conn.commit()
+                self.assertTrue(await store.is_admin(1))
+
+                await store.remove_admin(1)
+                self.assertFalse(await store.is_admin(1))
+            finally:
+                await store.close()
+
     async def test_sqlite_get_public_is_cached_including_negatives(self) -> None:
         with tempfile.NamedTemporaryFile() as db:
             store = SqliteDialogStore(db.name)

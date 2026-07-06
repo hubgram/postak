@@ -21,6 +21,8 @@ class SqliteDialogStore:
         # Cache of public-scope flags (including "no row" as None), read on every
         # comment. set_public is the sole writer, so it keeps the cache current.
         self._public_cache: dict[tuple[str, int, int], bool | None] = {}
+        self._admin_cache: dict[int, bool] = {}
+        self._allowed_cache: dict[tuple[int, tuple[str, int, int]], bool] = {}
 
     @property
     def _conn(self) -> aiosqlite.Connection:
@@ -85,6 +87,8 @@ class SqliteDialogStore:
             self._db = None
         self._known_threads.clear()
         self._public_cache.clear()
+        self._admin_cache.clear()
+        self._allowed_cache.clear()
 
     async def mark_pending(self, key: Key) -> None:
         await self._conn.execute(
@@ -188,41 +192,56 @@ class SqliteDialogStore:
             (user_id,),
         )
         await self._conn.commit()
+        self._admin_cache[user_id] = True
 
     async def remove_admin(self, user_id: int) -> None:
         await self._conn.execute("DELETE FROM access_admins WHERE user_id = ?", (user_id,))
         await self._conn.commit()
+        self._admin_cache[user_id] = False
 
     async def is_admin(self, user_id: int) -> bool:
+        if (cached := self._admin_cache.get(user_id)) is not None:
+            return cached
         cursor = await self._conn.execute(
             "SELECT 1 FROM access_admins WHERE user_id = ?",
             (user_id,),
         )
-        return await cursor.fetchone() is not None
+        result = await cursor.fetchone() is not None
+        self._admin_cache[user_id] = result
+        return result
 
     async def allow_user(self, user_id: int, scope: AccessKey) -> None:
+        values = _scope_values(scope)
         await self._conn.execute(
             "INSERT OR IGNORE INTO access_allowed_users "
             "(user_id, scope_kind, chat_id, thread_id) VALUES (?, ?, ?, ?)",
-            (user_id, *_scope_values(scope)),
+            (user_id, *values),
         )
         await self._conn.commit()
+        self._allowed_cache[(user_id, values)] = True
 
     async def revoke_user(self, user_id: int, scope: AccessKey) -> None:
+        values = _scope_values(scope)
         await self._conn.execute(
             "DELETE FROM access_allowed_users "
             "WHERE user_id = ? AND scope_kind = ? AND chat_id = ? AND thread_id = ?",
-            (user_id, *_scope_values(scope)),
+            (user_id, *values),
         )
         await self._conn.commit()
+        self._allowed_cache[(user_id, values)] = False
 
     async def is_user_allowed(self, user_id: int, scope: AccessKey) -> bool:
+        values = _scope_values(scope)
+        if (cached := self._allowed_cache.get((user_id, values))) is not None:
+            return cached
         cursor = await self._conn.execute(
             "SELECT 1 FROM access_allowed_users "
             "WHERE user_id = ? AND scope_kind = ? AND chat_id = ? AND thread_id = ?",
-            (user_id, *_scope_values(scope)),
+            (user_id, *values),
         )
-        return await cursor.fetchone() is not None
+        result = await cursor.fetchone() is not None
+        self._allowed_cache[(user_id, values)] = result
+        return result
 
     async def set_public(self, scope: AccessKey, public: bool) -> None:
         values = _scope_values(scope)
