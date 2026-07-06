@@ -49,9 +49,10 @@ class OpenAIGenerator:
         model: str,
         base_url: str | None = None,
         api_key: str = "not-needed",
+        timeout: float = 120.0,
         **params: Any,
     ) -> None:
-        self._client = AsyncOpenAI(base_url=base_url, api_key=api_key)
+        self._client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
         self._model = model
         self._params = params  # extra sampling params: temperature, max_tokens, ...
 
