@@ -9,7 +9,7 @@ from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import BaseFilter, Command
-from aiogram.types import Message
+from aiogram.types import BotCommand, Message
 
 from postak.access import AccessPolicy, AccessScope, CanAnswer, make_scope
 from postak.config import FIRST_PROMPT, SYSTEM_PROMPT
@@ -185,6 +185,9 @@ class Postak:
         if isinstance(self.store, SqliteDialogStore):
             await self.store.connect()
         await self._apply_initial_access()
+        await bot.set_my_commands(
+            [BotCommand(command="new", description="Start a new conversation")]
+        )
         for channel_id in self.channels:
             discussion_id = (await bot.get_chat(channel_id)).linked_chat_id
             if discussion_id is not None:
