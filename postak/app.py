@@ -16,7 +16,13 @@ from postak.commands import postak_admin
 from postak.config import FIRST_PROMPT, SYSTEM_PROMPT
 from postak.conversation import Conversations
 from postak.generation import Generator, ModelConfigurable
-from postak.handlers import answer_discussion, new, new_from_group, open_discussion
+from postak.handlers import (
+    answer_discussion,
+    new,
+    new_from_group,
+    new_from_unlinked_group,
+    open_discussion,
+)
 from postak.registry import AdminRegistry, ChannelRegistry
 from postak.store import SqliteDialogStore, Store, create_store
 
@@ -161,6 +167,11 @@ class Postak:
         self.router.message.register(
             new_from_group, Command("new"), FromDiscussion(self.channel_registry)
         )
+        # /new by a Postak admin in a group Postak doesn't know yet: link its
+        # channel and start the conversation, instead of doing nothing silently.
+        self.router.message.register(
+            new_from_unlinked_group, Command("new"), F.chat.type == "supergroup"
+        )
         # Postak admins can manage admins and access rules.
         self.router.message.register(postak_admin, Command("postak"))
         # Automatic forwards open dialogs; comments are gated separately before generation.
@@ -177,6 +188,7 @@ class Postak:
         dp["store"] = self.store
         dp["conversations"] = self.conversations
         dp["access_policy"] = self.access_policy
+        dp["channel_registry"] = self.channel_registry
         dp.startup.register(self._startup)
         dp.shutdown.register(self._shutdown)
 

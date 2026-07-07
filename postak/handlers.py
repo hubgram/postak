@@ -6,9 +6,12 @@ from aiogram import Bot
 from aiogram.enums import ChatMemberStatus
 from aiogram.types import Message, MessageOriginChannel, ReactionTypeEmoji
 
+from postak.access import AccessPolicy
+from postak.channels import register_channel
 from postak.config import NEW_MESSAGE, SYSTEM_PROMPT
 from postak.conversation import Conversations
-from postak.store import DialogStore
+from postak.registry import ChannelRegistry
+from postak.store import DialogStore, Store
 
 
 async def start_conversation(bot: Bot, channel_id: int, store: DialogStore) -> None:
@@ -39,6 +42,24 @@ async def new_from_group(
     # An admin (named or anonymous) runs /new in the discussion group -> start it in the channel.
     if await is_chat_admin(bot, message):
         await start_conversation(bot, target_channel_id, store)
+
+
+async def new_from_unlinked_group(
+    message: Message,
+    bot: Bot,
+    store: Store,
+    channel_registry: ChannelRegistry,
+    access_policy: AccessPolicy,
+) -> None:
+    # /new in a group Postak doesn't yet know: a Postak admin can link its channel
+    # and start the conversation in one step, instead of it doing nothing silently.
+    if not await access_policy.can_manage(message):
+        await message.reply("You are not a Postak admin.", parse_mode=None)
+        return
+
+    channel_id = await register_channel(message, message.chat.id, store, channel_registry)
+    if channel_id is not None:
+        await start_conversation(bot, channel_id, store)
 
 
 def forwarded_channel_post(message: Message) -> tuple[int, int] | None:

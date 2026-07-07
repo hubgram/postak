@@ -3,13 +3,12 @@
 from collections.abc import AsyncIterator
 from typing import Protocol
 
-from aiogram import Bot
-from aiogram.enums import ChatMemberStatus, ChatType
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandObject
 from aiogram.types import Message
 
 from postak.access import AccessPolicy, AccessScope
+from postak.channels import register_channel
 from postak.conversation import set_channel_title
 from postak.generation import collect_tokens
 from postak.registry import ChannelRegistry
@@ -129,9 +128,9 @@ async def postak_admin(
                 await access_policy.restrict_everyone(scope)
                 await _reply(message, f"Public access is off for {scope.kind}.")
             case ["add"]:
-                await _add_channel(message, message.chat.id, store, pt.channel_registry)
+                await register_channel(message, message.chat.id, store, pt.channel_registry)
             case ["add", chat_id]:
-                await _add_channel(
+                await register_channel(
                     message, _parse_chat_id(chat_id), store, pt.channel_registry
                 )
             case ["remove"]:
@@ -196,56 +195,6 @@ def _parse_chat_id(value: str) -> int:
         return int(value)
     except ValueError as exc:
         raise ValueError(f"Invalid chat id: {value!r}") from exc
-
-
-async def _resolve_channel_link(bot: Bot, chat_id: int) -> tuple[int, int] | None:
-    """Resolve (channel_id, discussion_group_id) from either side of the pair."""
-    chat = await bot.get_chat(chat_id)
-    if chat.linked_chat_id is None:
-        return None
-    if chat.type == ChatType.CHANNEL:
-        return chat.id, chat.linked_chat_id
-    return chat.linked_chat_id, chat.id
-
-
-async def _bot_can_post(bot: Bot, channel_id: int) -> bool:
-    member = await bot.get_chat_member(channel_id, bot.id)
-    if member.status == ChatMemberStatus.CREATOR:
-        return True
-    if member.status == ChatMemberStatus.ADMINISTRATOR:
-        return bool(getattr(member, "can_post_messages", False))
-    return False
-
-
-async def _add_channel(
-    message: Message, chat_id: int, store: Store, channels: ChannelRegistry
-) -> None:
-    if message.bot is None:
-        await _reply(message, "Bot is not available for this message.")
-        return
-
-    link = await _resolve_channel_link(message.bot, chat_id)
-    if link is None:
-        await _reply(
-            message,
-            "This chat isn't linked to a channel/discussion group on Telegram yet. "
-            "Link them in the channel's Discussion settings first.",
-        )
-        return
-
-    channel_id, group_id = link
-    if not await _bot_can_post(message.bot, channel_id):
-        await _reply(
-            message,
-            f"Postak isn't an admin with 'Post Messages' rights in channel {channel_id}. "
-            "Grant it that permission, then try again.",
-        )
-        return
-
-    await store.add_channel(channel_id, group_id)
-    channels.add(channel_id)
-    channels.link_discussion(channel_id, group_id)
-    await _reply(message, f"Added channel {channel_id} linked to group {group_id}.")
 
 
 async def _remove_channel(

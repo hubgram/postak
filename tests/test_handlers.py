@@ -1,7 +1,12 @@
 import unittest
 from types import SimpleNamespace
 
-from postak.handlers import answer_discussion
+from aiogram.enums import ChatMemberStatus, ChatType
+
+from postak.config import NEW_MESSAGE
+from postak.handlers import answer_discussion, new_from_unlinked_group
+from postak.registry import ChannelRegistry
+from postak.store import InMemoryDialogStore
 
 
 async def _record(sink: list, value) -> None:
@@ -21,6 +26,117 @@ class AnswerDiscussionTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(reactions), 1)
         self.assertEqual(reactions[0][0].emoji, "👀")
         self.assertEqual(enqueued, [(message, 20)])
+
+
+class FakeAccessPolicy:
+    def __init__(self, *, can_manage: bool = True) -> None:
+        self._can_manage = can_manage
+
+    async def can_manage(self, message) -> bool:
+        return self._can_manage
+
+
+class FakeBot:
+    def __init__(self) -> None:
+        self.id = 999
+        self.chats: dict[int, SimpleNamespace] = {}
+        self.memberships: dict[int, SimpleNamespace] = {}
+        self.sent: list[tuple[int, str]] = []
+
+    async def get_chat(self, chat_id):
+        return self.chats[chat_id]
+
+    async def get_chat_member(self, chat_id, user_id):
+        return self.memberships[chat_id]
+
+    async def send_message(self, chat_id, text):
+        self.sent.append((chat_id, text))
+        return SimpleNamespace(chat=SimpleNamespace(id=chat_id), message_id=len(self.sent))
+
+
+class FakeMessage:
+    def __init__(self, *, chat_id: int = 20) -> None:
+        self.chat = SimpleNamespace(id=chat_id)
+        self.bot = FakeBot()
+        self.replies: list[str] = []
+
+    async def reply(self, text: str, parse_mode=None) -> None:
+        self.replies.append(text)
+
+
+class NewFromUnlinkedGroupTest(unittest.IsolatedAsyncioTestCase):
+    async def test_non_admin_is_refused(self) -> None:
+        message = FakeMessage()
+        store = InMemoryDialogStore()
+        registry = ChannelRegistry()
+
+        await new_from_unlinked_group(
+            message, message.bot, store, registry, FakeAccessPolicy(can_manage=False)
+        )
+
+        self.assertEqual(message.replies, ["You are not a Postak admin."])
+        self.assertEqual(registry.channels, [])
+
+    async def test_admin_registers_and_starts_conversation(self) -> None:
+        message = FakeMessage(chat_id=20)
+        message.bot.chats[20] = SimpleNamespace(
+            id=20, type=ChatType.SUPERGROUP, linked_chat_id=10
+        )
+        message.bot.memberships[10] = SimpleNamespace(
+            status=ChatMemberStatus.ADMINISTRATOR, can_post_messages=True
+        )
+        store = InMemoryDialogStore()
+        registry = ChannelRegistry()
+
+        await new_from_unlinked_group(message, message.bot, store, registry, FakeAccessPolicy())
+
+        self.assertEqual(registry.channel_for_discussion(20), 10)
+        self.assertEqual(await store.channel_links(), [(10, 20)])
+        self.assertEqual(message.bot.sent, [(10, NEW_MESSAGE)])
+        self.assertEqual(message.replies, ["Added channel 10 linked to group 20."])
+
+    async def test_admin_in_unlinked_group_reports_and_does_not_start(self) -> None:
+        message = FakeMessage(chat_id=20)
+        message.bot.chats[20] = SimpleNamespace(
+            id=20, type=ChatType.SUPERGROUP, linked_chat_id=None
+        )
+        store = InMemoryDialogStore()
+        registry = ChannelRegistry()
+
+        await new_from_unlinked_group(message, message.bot, store, registry, FakeAccessPolicy())
+
+        self.assertEqual(message.bot.sent, [])
+        self.assertEqual(registry.channels, [])
+        self.assertEqual(
+            message.replies,
+            [
+                "This chat isn't linked to a channel/discussion group on Telegram yet. "
+                "Link them in the channel's Discussion settings first."
+            ],
+        )
+
+    async def test_admin_without_post_permission_reports_and_does_not_start(self) -> None:
+        message = FakeMessage(chat_id=20)
+        message.bot.chats[20] = SimpleNamespace(
+            id=20, type=ChatType.SUPERGROUP, linked_chat_id=10
+        )
+        message.bot.memberships[10] = SimpleNamespace(
+            status=ChatMemberStatus.ADMINISTRATOR, can_post_messages=False
+        )
+        store = InMemoryDialogStore()
+        registry = ChannelRegistry()
+
+        await new_from_unlinked_group(message, message.bot, store, registry, FakeAccessPolicy())
+
+        self.assertEqual(message.bot.sent, [])
+        self.assertEqual(registry.channels, [])
+        self.assertEqual(
+            message.replies,
+            [
+                "Postak isn't an admin with 'Post Messages' rights in channel 10. "
+                "Grant it that permission, then try again."
+            ],
+        )
 
 
 if __name__ == "__main__":
