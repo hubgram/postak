@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from aiogram.enums import ChatMemberStatus, ChatType
 
 from postak.config import NEW_MESSAGE
-from postak.handlers import answer_discussion, new_from_unlinked_group
+from postak.handlers import answer_discussion, new, new_from_group, new_from_unlinked_group
 from postak.registry import ChannelRegistry
 from postak.store import InMemoryDialogStore
 
@@ -55,10 +55,16 @@ class FakeBot:
 
 
 class FakeMessage:
-    def __init__(self, *, chat_id: int = 20) -> None:
+    def __init__(
+        self, *, chat_id: int = 20, sender_chat_id: int | None = None, user_id: int | None = 1
+    ) -> None:
         self.chat = SimpleNamespace(id=chat_id)
         self.bot = FakeBot()
         self.replies: list[str] = []
+        self.sender_chat = (
+            SimpleNamespace(id=sender_chat_id) if sender_chat_id is not None else None
+        )
+        self.from_user = SimpleNamespace(id=user_id) if user_id is not None else None
 
     async def reply(self, text: str, parse_mode=None) -> None:
         self.replies.append(text)
@@ -137,6 +143,35 @@ class NewFromUnlinkedGroupTest(unittest.IsolatedAsyncioTestCase):
                 "Grant it that permission, then try again."
             ],
         )
+
+
+class NewTest(unittest.IsolatedAsyncioTestCase):
+    async def test_starts_conversation(self) -> None:
+        message = FakeMessage(chat_id=30, user_id=None)
+        store = InMemoryDialogStore()
+
+        await new(message, message.bot, store)
+
+        self.assertEqual(message.bot.sent, [(30, NEW_MESSAGE)])
+
+
+class NewFromGroupTest(unittest.IsolatedAsyncioTestCase):
+    async def test_admin_starts_conversation(self) -> None:
+        message = FakeMessage(chat_id=20, sender_chat_id=20, user_id=None)
+        store = InMemoryDialogStore()
+
+        await new_from_group(message, message.bot, store, target_channel_id=10)
+
+        self.assertEqual(message.bot.sent, [(10, NEW_MESSAGE)])
+
+    async def test_non_admin_is_silently_ignored(self) -> None:
+        message = FakeMessage(chat_id=20, user_id=7)
+        message.bot.memberships[20] = SimpleNamespace(status=ChatMemberStatus.MEMBER)
+        store = InMemoryDialogStore()
+
+        await new_from_group(message, message.bot, store, target_channel_id=10)
+
+        self.assertEqual(message.bot.sent, [])
 
 
 if __name__ == "__main__":

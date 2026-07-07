@@ -14,6 +14,11 @@ from postak.registry import ChannelRegistry
 from postak.store import DialogStore, Store
 
 
+async def _acknowledge(message: Message) -> None:
+    with contextlib.suppress(Exception):
+        await message.react([ReactionTypeEmoji(emoji="👀")])
+
+
 async def start_conversation(bot: Bot, channel_id: int, store: DialogStore) -> None:
     """Post the new-conversation message to the channel; its auto-forward opens a thread."""
     sent = await bot.send_message(channel_id, NEW_MESSAGE)
@@ -84,6 +89,5 @@ async def answer_discussion(
     message: Message, conversations: Conversations, thread_id: int
 ) -> None:
     # Acknowledge receipt, then hand the comment to the per-thread batching worker.
-    with contextlib.suppress(Exception):
-        await message.react([ReactionTypeEmoji(emoji="👀")])
+    await _acknowledge(message)
     conversations.enqueue(message, thread_id)
