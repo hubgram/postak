@@ -1,3 +1,4 @@
+import contextlib
 from collections.abc import AsyncIterator
 from typing import Protocol
 
@@ -5,7 +6,7 @@ from aiogram import Bot
 from aiogram.enums import ChatMemberStatus
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandObject
-from aiogram.types import Message, MessageOriginChannel
+from aiogram.types import Message, MessageOriginChannel, ReactionTypeEmoji
 
 from postak.access import AccessPolicy, AccessScope
 from postak.config import NEW_MESSAGE, SYSTEM_PROMPT
@@ -115,7 +116,9 @@ async def open_discussion(message: Message, store: DialogStore) -> None:
 async def answer_discussion(
     message: Message, conversations: Conversations, thread_id: int
 ) -> None:
-    # Hand the comment to the per-thread batching worker.
+    # Acknowledge receipt, then hand the comment to the per-thread batching worker.
+    with contextlib.suppress(Exception):
+        await message.react([ReactionTypeEmoji(emoji="👀")])
     conversations.enqueue(message, thread_id)
 
 
