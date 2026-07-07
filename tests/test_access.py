@@ -109,6 +109,37 @@ class CanAnswerTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(await can_answer(message(user_id=7)), {"thread_id": 20})
 
+class ClearChatTest(unittest.IsolatedAsyncioTestCase):
+    async def test_memory_store_clears_only_that_chat(self) -> None:
+        store = InMemoryDialogStore()
+        await store.allow_user(7, AccessScope.group(10).key())
+        await store.allow_user(7, AccessScope.group(99).key())
+        await store.set_public(AccessScope.thread(10, 20).key(), True)
+
+        await store.clear_chat(10)
+
+        self.assertFalse(await store.is_user_allowed(7, AccessScope.group(10).key()))
+        self.assertTrue(await store.is_user_allowed(7, AccessScope.group(99).key()))
+        self.assertIsNone(await store.get_public(AccessScope.thread(10, 20).key()))
+
+    async def test_sqlite_store_clears_only_that_chat(self) -> None:
+        with tempfile.NamedTemporaryFile() as db:
+            store = SqliteDialogStore(db.name)
+            await store.connect()
+            try:
+                await store.allow_user(7, AccessScope.group(10).key())
+                await store.allow_user(7, AccessScope.group(99).key())
+                await store.set_public(AccessScope.thread(10, 20).key(), True)
+
+                await store.clear_chat(10)
+
+                self.assertFalse(await store.is_user_allowed(7, AccessScope.group(10).key()))
+                self.assertTrue(await store.is_user_allowed(7, AccessScope.group(99).key()))
+                self.assertIsNone(await store.get_public(AccessScope.thread(10, 20).key()))
+            finally:
+                await store.close()
+
+
 class SqliteAccessStoreTest(unittest.IsolatedAsyncioTestCase):
     async def test_access_rules_persist(self) -> None:
         with tempfile.NamedTemporaryFile() as db:
@@ -240,6 +271,29 @@ class DialogStoreTest(unittest.IsolatedAsyncioTestCase):
                 timeout = await (await store._conn.execute("PRAGMA busy_timeout")).fetchone()
                 self.assertEqual(journal[0], "wal")
                 self.assertEqual(timeout[0], 5000)
+            finally:
+                await store.close()
+
+    async def test_memory_store_channel_links_round_trip(self) -> None:
+        store = InMemoryDialogStore()
+        await store.add_channel(10, 20)
+
+        self.assertEqual(await store.channel_links(), [(10, 20)])
+        self.assertEqual(await store.remove_channel(20), (10, 20))
+        self.assertIsNone(await store.remove_channel(10))
+        self.assertEqual(await store.channel_links(), [])
+
+    async def test_sqlite_store_channel_links_round_trip(self) -> None:
+        with tempfile.NamedTemporaryFile() as db:
+            store = SqliteDialogStore(db.name)
+            await store.connect()
+            try:
+                await store.add_channel(10, 20)
+
+                self.assertEqual(await store.channel_links(), [(10, 20)])
+                self.assertEqual(await store.remove_channel(20), (10, 20))
+                self.assertIsNone(await store.remove_channel(10))
+                self.assertEqual(await store.channel_links(), [])
             finally:
                 await store.close()
 

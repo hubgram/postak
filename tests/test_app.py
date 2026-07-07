@@ -1,5 +1,6 @@
 import unittest
 from collections.abc import AsyncIterator
+from types import SimpleNamespace
 
 from aiogram import Dispatcher
 
@@ -19,6 +20,18 @@ class StubGenerator:
 
     def tokens(self, messages) -> AsyncIterator[str]:
         return self._tokens()
+
+
+class FakeBot:
+    def __init__(self, linked_chat_id: int | None = None) -> None:
+        self._linked_chat_id = linked_chat_id
+        self.commands = None
+
+    async def get_chat(self, chat_id: int) -> SimpleNamespace:
+        return SimpleNamespace(linked_chat_id=self._linked_chat_id)
+
+    async def set_my_commands(self, commands) -> None:
+        self.commands = commands
 
 
 class RecordingPostak(Postak):
@@ -77,6 +90,25 @@ class PostakAppTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(postak.started)
         self.assertTrue(postak.stopped)
+
+    async def test_on_startup_persists_env_configured_channel_link(self) -> None:
+        store = InMemoryDialogStore()
+        postak = Postak(generator=StubGenerator(), store=store, channels=[10])
+
+        await postak.on_startup(FakeBot(linked_chat_id=20))
+
+        self.assertEqual(postak.channel_registry.channel_for_discussion(20), 10)
+        self.assertEqual(await store.channel_links(), [(10, 20)])
+
+    async def test_on_startup_loads_channel_links_persisted_earlier(self) -> None:
+        store = InMemoryDialogStore()
+        await store.add_channel(30, 40)
+        postak = Postak(generator=StubGenerator(), store=store)
+
+        await postak.on_startup(FakeBot())
+
+        self.assertEqual(postak.channels, [30])
+        self.assertEqual(postak.channel_registry.channel_for_discussion(40), 30)
 
 
 if __name__ == "__main__":

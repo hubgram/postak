@@ -18,6 +18,18 @@ class ChannelRegistry:
         if channel_id not in self._channels:
             self._channels.append(channel_id)
 
+    def remove(self, channel_id: int) -> int | None:
+        """Remove a served channel; returns its linked discussion group id, if any."""
+        if channel_id not in self._channels:
+            return None
+        self._channels.remove(channel_id)
+        group_id = next(
+            (gid for gid, cid in self._channel_of_group.items() if cid == channel_id), None
+        )
+        if group_id is not None:
+            del self._channel_of_group[group_id]
+        return group_id
+
     def link_discussion(self, channel_id: int, discussion_group_id: int) -> None:
         self._channel_of_group[discussion_group_id] = channel_id
 

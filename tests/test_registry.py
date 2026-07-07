@@ -45,6 +45,22 @@ class ChannelRegistryTest(unittest.TestCase):
         self.assertEqual(registry.channel_for_discussion(20), 10)
         self.assertIsNone(registry.channel_for_discussion(30))
 
+    def test_remove_drops_channel_and_its_discussion_link(self) -> None:
+        registry = ChannelRegistry([10])
+        registry.link_discussion(channel_id=10, discussion_group_id=20)
+
+        removed = registry.remove(10)
+
+        self.assertEqual(removed, 20)
+        self.assertEqual(registry.channels, [])
+        self.assertIsNone(registry.channel_for_discussion(20))
+
+    def test_remove_unknown_channel_returns_none(self) -> None:
+        registry = ChannelRegistry([10])
+
+        self.assertIsNone(registry.remove(99))
+        self.assertEqual(registry.channels, [10])
+
 
 if __name__ == "__main__":
     unittest.main()

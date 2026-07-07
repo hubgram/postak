@@ -193,6 +193,10 @@ class Postak:
             discussion_id = (await bot.get_chat(channel_id)).linked_chat_id
             if discussion_id is not None:
                 self.channel_registry.link_discussion(channel_id, discussion_id)
+                await self.store.add_channel(channel_id, discussion_id)
+        for channel_id, discussion_id in await self.store.channel_links():
+            self.channel_registry.add(channel_id)
+            self.channel_registry.link_discussion(channel_id, discussion_id)
 
     async def on_shutdown(self) -> None:
         """Release resources after polling: finish in-flight replies, then close a

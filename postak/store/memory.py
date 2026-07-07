@@ -12,6 +12,7 @@ class InMemoryDialogStore:
         self._admins: set[int] = set()
         self._allowed: set[tuple[int, AccessKey]] = set()
         self._public: dict[AccessKey, bool] = {}
+        self._channel_links: dict[int, int] = {}
 
     async def mark_pending(self, key: Key) -> None:
         self._pending.add(key)
@@ -76,3 +77,24 @@ class InMemoryDialogStore:
 
     async def public_scopes(self) -> list[tuple[AccessKey, bool]]:
         return list(self._public.items())
+
+    async def clear_chat(self, chat_id: int) -> None:
+        self._allowed = {(uid, scope) for uid, scope in self._allowed if scope[1] != chat_id}
+        self._public = {
+            scope: public for scope, public in self._public.items() if scope[1] != chat_id
+        }
+
+    async def add_channel(self, channel_id: int, discussion_group_id: int) -> None:
+        self._channel_links[channel_id] = discussion_group_id
+
+    async def remove_channel(self, chat_id: int) -> tuple[int, int] | None:
+        if chat_id in self._channel_links:
+            return chat_id, self._channel_links.pop(chat_id)
+        for channel_id, group_id in self._channel_links.items():
+            if group_id == chat_id:
+                del self._channel_links[channel_id]
+                return channel_id, group_id
+        return None
+
+    async def channel_links(self) -> list[tuple[int, int]]:
+        return list(self._channel_links.items())

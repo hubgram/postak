@@ -3,8 +3,11 @@ from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from aiogram.enums import ChatMemberStatus, ChatType
+
 from postak import commands as commands_module
 from postak.commands import POSTAK_HELP, POSTAK_USAGE, _reply, postak_admin
+from postak.registry import ChannelRegistry
 from postak.store import InMemoryDialogStore
 
 
@@ -17,6 +20,7 @@ async def drain_stream(message, tokens) -> str:
 class FakeAccessPolicy:
     def __init__(self, *, can_manage: bool = True) -> None:
         self._can_manage = can_manage
+        self.cleared_chats: list[int] = []
 
     async def can_manage(self, message) -> bool:
         return self._can_manage
@@ -30,11 +34,15 @@ class FakeAccessPolicy:
     async def public_scopes(self):
         return [(("global", None, None), True)]
 
+    async def clear_chat(self, chat_id: int) -> None:
+        self.cleared_chats.append(chat_id)
+
 
 class FakePostak:
     def __init__(self) -> None:
         self.model = "old"
         self.generator = FakeGenerator("digest text")
+        self.channel_registry = ChannelRegistry()
 
     def set_model(self, model: str) -> "FakePostak":
         self.model = model
@@ -72,14 +80,23 @@ class FakeMessage:
 
 class FakeBot:
     def __init__(self) -> None:
+        self.id = 999
         self.edits = []
         self.deletes = []
+        self.chats: dict[int, SimpleNamespace] = {}
+        self.memberships: dict[int, SimpleNamespace] = {}
 
     async def edit_message_text(self, text, chat_id, message_id, parse_mode=None) -> None:
         self.edits.append((text, chat_id, message_id, parse_mode))
 
     async def delete_message(self, chat_id, message_id) -> None:
         self.deletes.append((chat_id, message_id))
+
+    async def get_chat(self, chat_id):
+        return self.chats[chat_id]
+
+    async def get_chat_member(self, chat_id, user_id):
+        return self.memberships[chat_id]
 
 
 class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
@@ -146,6 +163,112 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(message.replies, ["public global: on\nuser 7: group 10"])
+
+    async def test_add_command_registers_current_chat_from_linked_group(self) -> None:
+        message = FakeMessage(chat_id=20)
+        message.bot.chats[20] = SimpleNamespace(id=20, type=ChatType.SUPERGROUP, linked_chat_id=10)
+        message.bot.memberships[10] = SimpleNamespace(
+            status=ChatMemberStatus.ADMINISTRATOR, can_post_messages=True
+        )
+        pt = FakePostak()
+        store = InMemoryDialogStore()
+        command = SimpleNamespace(args="add")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, store)
+
+        self.assertEqual(pt.channel_registry.channel_for_discussion(20), 10)
+        self.assertEqual(await store.channel_links(), [(10, 20)])
+        self.assertEqual(message.replies, ["Added channel 10 linked to group 20."])
+
+    async def test_add_command_accepts_an_explicit_channel_id(self) -> None:
+        message = FakeMessage(chat_id=20)
+        message.bot.chats[10] = SimpleNamespace(id=10, type=ChatType.CHANNEL, linked_chat_id=20)
+        message.bot.memberships[10] = SimpleNamespace(status=ChatMemberStatus.CREATOR)
+        pt = FakePostak()
+        command = SimpleNamespace(args="add 10")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, InMemoryDialogStore())
+
+        self.assertEqual(pt.channel_registry.channel_for_discussion(20), 10)
+        self.assertEqual(message.replies, ["Added channel 10 linked to group 20."])
+
+    async def test_add_command_reports_a_chat_with_no_discussion_link(self) -> None:
+        message = FakeMessage(chat_id=20)
+        message.bot.chats[20] = SimpleNamespace(
+            id=20, type=ChatType.SUPERGROUP, linked_chat_id=None
+        )
+        pt = FakePostak()
+        command = SimpleNamespace(args="add")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, InMemoryDialogStore())
+
+        self.assertEqual(
+            message.replies,
+            [
+                "This chat isn't linked to a channel/discussion group on Telegram yet. "
+                "Link them in the channel's Discussion settings first."
+            ],
+        )
+
+    async def test_add_command_reports_missing_post_permission(self) -> None:
+        message = FakeMessage(chat_id=20)
+        message.bot.chats[20] = SimpleNamespace(id=20, type=ChatType.SUPERGROUP, linked_chat_id=10)
+        message.bot.memberships[10] = SimpleNamespace(
+            status=ChatMemberStatus.ADMINISTRATOR, can_post_messages=False
+        )
+        pt = FakePostak()
+        command = SimpleNamespace(args="add")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, InMemoryDialogStore())
+
+        self.assertIsNone(pt.channel_registry.channel_for_discussion(20))
+        self.assertEqual(
+            message.replies,
+            [
+                "Postak isn't an admin with 'Post Messages' rights in channel 10. "
+                "Grant it that permission, then try again."
+            ],
+        )
+
+    async def test_remove_command_drops_channel_and_scoped_access(self) -> None:
+        message = FakeMessage(chat_id=20)
+        pt = FakePostak()
+        store = InMemoryDialogStore()
+        await store.add_channel(10, 20)
+        pt.channel_registry.add(10)
+        pt.channel_registry.link_discussion(10, 20)
+        access_policy = FakeAccessPolicy()
+        command = SimpleNamespace(args="remove")
+
+        await postak_admin(message, command, access_policy, pt, store)
+
+        self.assertIsNone(pt.channel_registry.channel_for_discussion(20))
+        self.assertEqual(await store.channel_links(), [])
+        self.assertEqual(sorted(access_policy.cleared_chats), [10, 20])
+        self.assertEqual(message.replies, ["Removed channel 10 (group 20)."])
+
+    async def test_remove_command_accepts_an_explicit_channel_id(self) -> None:
+        message = FakeMessage(chat_id=99)
+        pt = FakePostak()
+        store = InMemoryDialogStore()
+        await store.add_channel(10, 20)
+        pt.channel_registry.add(10)
+        pt.channel_registry.link_discussion(10, 20)
+        command = SimpleNamespace(args="remove 10")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, store)
+
+        self.assertEqual(await store.channel_links(), [])
+        self.assertEqual(message.replies, ["Removed channel 10 (group 20)."])
+
+    async def test_remove_command_reports_unknown_chat(self) -> None:
+        message = FakeMessage(chat_id=20)
+        pt = FakePostak()
+        command = SimpleNamespace(args="remove")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, InMemoryDialogStore())
+
+        self.assertEqual(message.replies, ["No channel registered for 20."])
 
     async def test_long_reply_is_split_into_telegram_sized_chunks(self) -> None:
         message = FakeMessage()

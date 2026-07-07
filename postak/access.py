@@ -96,6 +96,9 @@ class AccessPolicy:
     async def public_scopes(self) -> list[tuple[AccessKey, bool]]:
         return await self._store.public_scopes()
 
+    async def clear_chat(self, chat_id: int) -> None:
+        await self._store.clear_chat(chat_id)
+
     async def is_public(self, scope: AccessScope) -> bool:
         stored = await self._store.get_public(scope.key())
         if stored is not None:

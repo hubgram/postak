@@ -113,8 +113,28 @@ class AccessStore(Protocol):
         """All stored public flags per scope."""
         ...
 
+    async def clear_chat(self, chat_id: int) -> None:
+        """Remove every per-user grant and public flag scoped to this chat."""
+        ...
 
-class Store(DialogStore, AccessStore, Protocol):
+
+class ChannelStore(Protocol):
+    """Persists channel <-> discussion group links."""
+
+    async def add_channel(self, channel_id: int, discussion_group_id: int) -> None:
+        """Persist a channel's link to its discussion group."""
+        ...
+
+    async def remove_channel(self, chat_id: int) -> tuple[int, int] | None:
+        """Remove the link containing this channel or group id; return the removed pair."""
+        ...
+
+    async def channel_links(self) -> list[tuple[int, int]]:
+        """All persisted (channel_id, discussion_group_id) pairs."""
+        ...
+
+
+class Store(DialogStore, AccessStore, ChannelStore, Protocol):
     """Combined storage contract used by Postak."""
 
     pass

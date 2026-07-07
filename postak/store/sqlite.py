@@ -77,6 +77,10 @@ class SqliteDialogStore:
                 public INTEGER NOT NULL,
                 PRIMARY KEY (scope_kind, chat_id, thread_id)
             );
+            CREATE TABLE IF NOT EXISTS channels (
+                channel_id INTEGER PRIMARY KEY,
+                discussion_group_id INTEGER NOT NULL UNIQUE
+            );
             """
         )
         await self._db.commit()
@@ -293,3 +297,42 @@ class SqliteDialogStore:
             ((kind, chat_id or None, thread_id or None), bool(public))
             for kind, chat_id, thread_id, public in await cursor.fetchall()
         ]
+
+    async def clear_chat(self, chat_id: int) -> None:
+        await self._conn.execute(
+            "DELETE FROM access_allowed_users WHERE chat_id = ?", (chat_id,)
+        )
+        await self._conn.execute(
+            "DELETE FROM access_public_scopes WHERE chat_id = ?", (chat_id,)
+        )
+        await self._conn.commit()
+        self._allowed_cache.clear()
+        self._public_cache.clear()
+
+    async def add_channel(self, channel_id: int, discussion_group_id: int) -> None:
+        await self._conn.execute(
+            "INSERT INTO channels (channel_id, discussion_group_id) VALUES (?, ?) "
+            "ON CONFLICT(channel_id) DO UPDATE SET "
+            "discussion_group_id = excluded.discussion_group_id",
+            (channel_id, discussion_group_id),
+        )
+        await self._conn.commit()
+
+    async def remove_channel(self, chat_id: int) -> tuple[int, int] | None:
+        cursor = await self._conn.execute(
+            "SELECT channel_id, discussion_group_id FROM channels "
+            "WHERE channel_id = ? OR discussion_group_id = ?",
+            (chat_id, chat_id),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        await self._conn.execute("DELETE FROM channels WHERE channel_id = ?", (row[0],))
+        await self._conn.commit()
+        return (row[0], row[1])
+
+    async def channel_links(self) -> list[tuple[int, int]]:
+        cursor = await self._conn.execute(
+            "SELECT channel_id, discussion_group_id FROM channels ORDER BY channel_id"
+        )
+        return [(row[0], row[1]) for row in await cursor.fetchall()]
