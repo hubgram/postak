@@ -20,11 +20,9 @@ async def set_channel_title(bot: Bot | None, channel_post: Key | None, title: st
     if bot is None or channel_post is None or not title:
         return
     channel_id, message_id = channel_post
-    # Ignore edit failures: channel post deleted, not editable, or unchanged.
-    with contextlib.suppress(TelegramBadRequest):
-        await bot.edit_message_text(
-            title, chat_id=channel_id, message_id=message_id, parse_mode=None
-        )
+    await bot.edit_message_text(
+        title, chat_id=channel_id, message_id=message_id, parse_mode=None
+    )
 
 
 @dataclass
@@ -108,15 +106,19 @@ class Conversations:
         history = await self._store.history(key)
         if is_first_message(history):
             # First message: the LLM returns "title\nanswer". Stream only the answer
-            # (title line hidden), title the channel post, and store the answer.
+            # (title line hidden) and store it before touching the channel post, so
+            # a title-edit failure can't erase an answer the user already received.
             splitter = TitleSplitter(self._generator.tokens(build_title_messages(history)))
             answer = await stream_tokens(reply_to, splitter.stream())
-            channel_post = await self._store.channel_message(key)
+            await self._store.add(key, "assistant", answer or splitter.title)
             # Title the channel post from the first line either way, so it never
             # stays "New Conversation". When there is no answer after the title
             # line, the line doubles as the reply.
-            await set_channel_title(reply_to.bot, channel_post, splitter.title)
-            await self._store.add(key, "assistant", answer or splitter.title)
+            channel_post = await self._store.channel_message(key)
+            try:
+                await set_channel_title(reply_to.bot, channel_post, splitter.title)
+            except TelegramBadRequest:
+                logger.exception("failed to title channel post for thread %s", key)
         else:
             reply = await stream_tokens(reply_to, self._generator.tokens(history))
             await self._store.add(key, "assistant", reply)

@@ -4,6 +4,8 @@ from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from aiogram.exceptions import TelegramBadRequest
+
 from postak import conversation as conversation_module
 from postak.conversation import Conversations
 from postak.store import InMemoryDialogStore, Key
@@ -46,6 +48,22 @@ async def _drain(message, tokens) -> str:
     """Stand-in for stream_tokens: drive the token stream, return the joined text."""
     parts = [token async for token in tokens]
     return "".join(parts)
+
+
+class SetChannelTitleTest(unittest.IsolatedAsyncioTestCase):
+    async def test_propagates_telegram_errors(self) -> None:
+        async def failing_edit(text, chat_id, message_id, parse_mode=None) -> None:
+            raise TelegramBadRequest(method=SimpleNamespace(), message="message not modified")
+
+        bot = SimpleNamespace(edit_message_text=failing_edit)
+
+        with self.assertRaises(TelegramBadRequest):
+            await conversation_module.set_channel_title(bot, (30, 40), "New title")
+
+    async def test_noop_without_bot_channel_post_or_title(self) -> None:
+        await conversation_module.set_channel_title(None, (30, 40), "title")
+        await conversation_module.set_channel_title(SimpleNamespace(), None, "title")
+        await conversation_module.set_channel_title(SimpleNamespace(), (30, 40), "")
 
 
 class ConversationsTest(unittest.IsolatedAsyncioTestCase):
@@ -144,6 +162,24 @@ class FirstMessageGenerationTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(titled, [((30, 40), "Just one line")])
         self.assertEqual(history[-1], {"role": "assistant", "content": "Just one line"})
+
+    async def test_title_edit_failure_does_not_erase_the_stored_answer(self) -> None:
+        store = InMemoryDialogStore()
+        await store.start((10, 20), (30, 40), system="sys")
+        conversations = Conversations(LineGenerator("A Title\nThe answer body"), store)
+        msg = SimpleNamespace(chat=SimpleNamespace(id=10), text="hi", caption=None, bot=object())
+
+        async def failing_title(bot, channel_post, title) -> None:
+            raise TelegramBadRequest(method=SimpleNamespace(), message="message not modified")
+
+        with (
+            patch.object(conversation_module, "stream_tokens", _drain),
+            patch.object(conversation_module, "set_channel_title", failing_title),
+        ):
+            await conversations._generate([msg], (10, 20))  # must not raise
+
+        history = await store.history((10, 20))
+        self.assertEqual(history[-1], {"role": "assistant", "content": "The answer body"})
 
 
 if __name__ == "__main__":
