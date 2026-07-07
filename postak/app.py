@@ -12,10 +12,11 @@ from aiogram.filters import BaseFilter, Command
 from aiogram.types import BotCommand, Message
 
 from postak.access import AccessPolicy, AccessScope, CanAnswer, make_scope
+from postak.commands import postak_admin
 from postak.config import FIRST_PROMPT, SYSTEM_PROMPT
 from postak.conversation import Conversations
 from postak.generation import Generator, ModelConfigurable
-from postak.handlers import answer_discussion, new, new_from_group, open_discussion, postak_admin
+from postak.handlers import answer_discussion, new, new_from_group, open_discussion
 from postak.registry import AdminRegistry, ChannelRegistry
 from postak.store import SqliteDialogStore, Store, create_store
 
