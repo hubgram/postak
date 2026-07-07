@@ -12,10 +12,10 @@ from postak.access import AccessPolicy, AccessScope
 from postak.config import NEW_MESSAGE, SYSTEM_PROMPT
 from postak.conversation import Conversations, set_channel_title
 from postak.generation import collect_tokens
-from postak.llm import TitleSplitter, build_title_messages
 from postak.rendering import stream_tokens
 from postak.store import AccessKey, DialogStore
 from postak.store import Message as StoreMessage
+from postak.titling import TitleSplitter, build_title_messages
 
 POSTAK_USAGE = (
     "Usage: /postak admin|access|model|digest|compress|title|settitle|delete|regenerate ...\n"

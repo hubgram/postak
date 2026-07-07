@@ -1,31 +1,8 @@
-from collections.abc import AsyncIterator
-from typing import cast
+"""Titling a conversation from the first exchange."""
 
-from aiogram.types import Message
-from openai import AsyncOpenAI
-from openai.types.chat import ChatCompletionMessageParam
+from collections.abc import AsyncIterator
 
 from postak.config import FIRST_PROMPT, SYSTEM_PROMPT, TITLE_MAX
-from postak.rendering import stream_tokens
-
-
-async def completion_tokens(
-    client: AsyncOpenAI, model: str, messages: list[dict[str, str]]
-) -> AsyncIterator[str]:
-    completion = await client.chat.completions.create(
-        model=model,
-        messages=cast(list[ChatCompletionMessageParam], messages),
-        stream=True,
-    )
-    async for chunk in completion:
-        if delta := chunk.choices[0].delta.content:
-            yield delta
-
-
-async def stream_answer(
-    message: Message, client: AsyncOpenAI, model: str, messages: list[dict[str, str]]
-) -> str:
-    return await stream_tokens(message, completion_tokens(client, model, messages))
 
 
 class TitleSplitter:
