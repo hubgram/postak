@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass
 
 SYSTEM_PROMPT = "You are a helpful assistant replying to comments on a Telegram post."
-NEW_MESSAGE = "**💬 New Conversation**\n\n_Reply to this message to chat with AI_\\."
+NEW_MESSAGE = "**💬 New Conversation**\n\n_Reply to this message to start a conversation_\\."
 FIRST_PROMPT = (
     "This is the first message of a new conversation. On the first line, write a "
     "short title (3-6 words) for it. From the next line onward, write your answer."
