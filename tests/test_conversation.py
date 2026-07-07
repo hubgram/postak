@@ -10,7 +10,7 @@ from postak.store import InMemoryDialogStore, Key
 
 
 def message(chat_id: int = 10, text: str = "hello") -> SimpleNamespace:
-    return SimpleNamespace(chat=SimpleNamespace(id=chat_id), text=text)
+    return SimpleNamespace(chat=SimpleNamespace(id=chat_id), text=text, caption=None)
 
 
 class RecordingConversations(Conversations):
@@ -106,7 +106,7 @@ class ConversationsTest(unittest.IsolatedAsyncioTestCase):
         async def reply(text: str, parse_mode: object = None) -> None:
             replies.append(text)
 
-        msg = SimpleNamespace(chat=SimpleNamespace(id=10), text="hi", reply=reply)
+        msg = SimpleNamespace(chat=SimpleNamespace(id=10), text="hi", caption=None, reply=reply)
         conversations.enqueue(msg, thread_id=20)
         await conversations._states[key].task
 
@@ -119,7 +119,7 @@ class FirstMessageGenerationTest(unittest.IsolatedAsyncioTestCase):
         store = InMemoryDialogStore()
         await store.start((10, 20), (30, 40), system="sys")
         conversations = Conversations(LineGenerator(model_reply), store)
-        msg = SimpleNamespace(chat=SimpleNamespace(id=10), text="hi", bot=object())
+        msg = SimpleNamespace(chat=SimpleNamespace(id=10), text="hi", caption=None, bot=object())
 
         titled: list = []
 

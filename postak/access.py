@@ -141,7 +141,7 @@ class CanAnswer(BaseFilter):
 
     async def __call__(self, message: Message) -> bool | dict[str, Any]:
         thread_id = message.message_thread_id
-        if thread_id is None or not message.text:
+        if thread_id is None or not (message.text or message.caption):
             return False
         if not await self._store.has((message.chat.id, thread_id)):
             return False

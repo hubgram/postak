@@ -99,7 +99,7 @@ class Conversations:
 
     async def _generate(self, batch: list[Message], key: Key) -> None:
         """Store the batched user comments, generate one reply, and store it."""
-        texts = [msg.text for msg in batch if msg.text]
+        texts = [text for msg in batch if (text := msg.text or msg.caption)]
         if texts:
             await self._store.add_many(
                 key, [{"role": "user", "content": text} for text in texts]

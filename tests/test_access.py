@@ -12,6 +12,7 @@ def message(
     chat_id: int = 10,
     thread_id: int | None = 20,
     text: str | None = "hello",
+    caption: str | None = None,
 ) -> SimpleNamespace:
     user = SimpleNamespace(id=user_id) if user_id is not None else None
     return SimpleNamespace(
@@ -19,6 +20,7 @@ def message(
         chat=SimpleNamespace(id=chat_id),
         message_thread_id=thread_id,
         text=text,
+        caption=caption,
         sender_chat=None,
     )
 
@@ -84,6 +86,17 @@ class CanAnswerTest(unittest.IsolatedAsyncioTestCase):
         await policy.restrict_everyone(AccessScope.global_())
 
         self.assertFalse(await can_answer(message(user_id=7)))
+
+    async def test_filter_accepts_caption_only_messages(self) -> None:
+        store = InMemoryDialogStore()
+        can_answer = CanAnswer(store, AccessPolicy(store))
+
+        await store.start((10, 20), (30, 40))
+
+        self.assertEqual(
+            await can_answer(message(text=None, caption="look at this")), {"thread_id": 20}
+        )
+        self.assertFalse(await can_answer(message(text=None)))
 
     async def test_filter_injects_thread_id_for_allowed_comment(self) -> None:
         store = InMemoryDialogStore()
