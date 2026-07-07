@@ -15,7 +15,7 @@ class Settings:
     """Runtime configuration loaded from the environment."""
 
     bot_token: str
-    target_channel_id: int
+    target_channel_ids: list[int]
     model: str
     llm_base_url: str | None
     llm_api_key: str
@@ -33,7 +33,7 @@ class Settings:
 
         return cls(
             bot_token=required("BOT_TOKEN"),
-            target_channel_id=int(required("TARGET_CHANNEL_ID")),
+            target_channel_ids=_parse_int_list(required("TARGET_CHANNEL_ID")),
             model=required("LLM_MODEL"),
             llm_base_url=os.getenv("LLM_ENDPOINT") or None,
             llm_api_key=os.getenv("LLM_API_KEY") or "not-needed",

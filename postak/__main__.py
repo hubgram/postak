@@ -18,7 +18,7 @@ def main() -> None:
     postak = Postak(
         generator=generator,
         store=create_store(settings.database_url, window=settings.history_window),
-        channels=[settings.target_channel_id],
+        channels=settings.target_channel_ids,
         admins=settings.admins,
     )
     postak.run(settings.bot_token)
