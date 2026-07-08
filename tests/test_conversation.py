@@ -132,12 +132,49 @@ class ConversationsTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("couldn't finish", replies[0])
 
 
+class UserMessageTest(unittest.TestCase):
+    def test_captures_author_identity(self) -> None:
+        msg = SimpleNamespace(
+            sender_chat=None, from_user=SimpleNamespace(id=7, full_name="Ada Lovelace")
+        )
+
+        self.assertEqual(
+            conversation_module._user_message(msg, "hi"),
+            {"role": "user", "content": "hi", "user_id": 7, "user_name": "Ada Lovelace"},
+        )
+
+    def test_anonymous_sender_uses_chat_title_without_id(self) -> None:
+        msg = SimpleNamespace(
+            sender_chat=SimpleNamespace(title="My Group"),
+            from_user=SimpleNamespace(id=1087968824, full_name="Group"),
+        )
+
+        self.assertEqual(
+            conversation_module._user_message(msg, "hi"),
+            {"role": "user", "content": "hi", "user_name": "My Group"},
+        )
+
+    def test_no_sender_stores_plain_message(self) -> None:
+        msg = SimpleNamespace(sender_chat=None, from_user=None)
+
+        self.assertEqual(
+            conversation_module._user_message(msg, "hi"), {"role": "user", "content": "hi"}
+        )
+
+
 class FirstMessageGenerationTest(unittest.IsolatedAsyncioTestCase):
     async def _generate_first(self, model_reply: str) -> tuple[list, list]:
         store = InMemoryDialogStore()
         await store.start((10, 20), (30, 40), system="sys")
         conversations = Conversations(LineGenerator(model_reply), store)
-        msg = SimpleNamespace(chat=SimpleNamespace(id=10), text="hi", caption=None, bot=object())
+        msg = SimpleNamespace(
+            chat=SimpleNamespace(id=10),
+            text="hi",
+            caption=None,
+            bot=object(),
+            sender_chat=None,
+            from_user=SimpleNamespace(id=7, full_name="Ada Lovelace"),
+        )
 
         titled: list = []
 
@@ -155,6 +192,10 @@ class FirstMessageGenerationTest(unittest.IsolatedAsyncioTestCase):
         titled, history = await self._generate_first("A Title\nThe answer body")
 
         self.assertEqual(titled, [((30, 40), "A Title")])
+        self.assertEqual(
+            history[1],
+            {"role": "user", "content": "hi", "user_id": 7, "user_name": "Ada Lovelace"},
+        )
         self.assertEqual(history[-1], {"role": "assistant", "content": "The answer body"})
 
     async def test_single_line_reply_titles_post_and_uses_line_as_answer(self) -> None:
@@ -167,7 +208,14 @@ class FirstMessageGenerationTest(unittest.IsolatedAsyncioTestCase):
         store = InMemoryDialogStore()
         await store.start((10, 20), (30, 40), system="sys")
         conversations = Conversations(LineGenerator("A Title\nThe answer body"), store)
-        msg = SimpleNamespace(chat=SimpleNamespace(id=10), text="hi", caption=None, bot=object())
+        msg = SimpleNamespace(
+            chat=SimpleNamespace(id=10),
+            text="hi",
+            caption=None,
+            bot=object(),
+            sender_chat=None,
+            from_user=SimpleNamespace(id=7, full_name="Ada Lovelace"),
+        )
 
         async def failing_title(bot, channel_post, title) -> None:
             raise TelegramBadRequest(method=SimpleNamespace(), message="chat not found")

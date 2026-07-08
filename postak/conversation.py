@@ -11,9 +11,21 @@ from aiogram.types import Message
 from postak.generation import Generator
 from postak.rendering import stream_tokens
 from postak.store import DialogStore, Key
+from postak.store import Message as StoreMessage
 from postak.titling import TitleSplitter, build_title_messages, is_first_message
 
 logger = logging.getLogger(__name__)
+
+
+def _user_message(comment: Message, text: str) -> StoreMessage:
+    message: StoreMessage = {"role": "user", "content": text}
+    if comment.sender_chat is not None:
+        if comment.sender_chat.title:
+            message["user_name"] = comment.sender_chat.title
+    elif comment.from_user is not None:
+        message["user_id"] = comment.from_user.id
+        message["user_name"] = comment.from_user.full_name
+    return message
 
 
 async def set_channel_title(bot: Bot | None, channel_post: Key | None, title: str) -> None:
@@ -97,11 +109,9 @@ class Conversations:
 
     async def _generate(self, batch: list[Message], key: Key) -> None:
         """Store the batched user comments, generate one reply, and store it."""
-        texts = [text for msg in batch if (text := msg.text or msg.caption)]
-        if texts:
-            await self._store.add_many(
-                key, [{"role": "user", "content": text} for text in texts]
-            )
+        comments = [_user_message(msg, text) for msg in batch if (text := msg.text or msg.caption)]
+        if comments:
+            await self._store.add_many(key, comments)
         reply_to = batch[-1]  # reply under the most recent comment
         history = await self._store.history(key)
         if is_first_message(history):
