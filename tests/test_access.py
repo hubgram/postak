@@ -68,6 +68,27 @@ class AccessPolicyTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await policy.can_manage(anonymous))
         self.assertFalse(await policy.can_manage(message(user_id=None)))
 
+    async def test_can_use_follows_group_public_scope(self) -> None:
+        store = InMemoryDialogStore()
+        policy = AccessPolicy(store)
+
+        await policy.restrict_everyone(AccessScope.global_())
+        self.assertFalse(await policy.can_use(message(user_id=7), 10))
+
+        await policy.allow_everyone(AccessScope.group(10))
+
+        self.assertTrue(await policy.can_use(message(user_id=7), 10))
+        self.assertFalse(await policy.can_use(message(user_id=7), 99))
+
+    async def test_can_use_ignores_thread_scope_grants(self) -> None:
+        store = InMemoryDialogStore()
+        policy = AccessPolicy(store)
+
+        await policy.restrict_everyone(AccessScope.global_())
+        await policy.allow_user(7, AccessScope.thread(10, 20))
+
+        self.assertFalse(await policy.can_use(message(user_id=7), 10))
+
 
 class CanAnswerTest(unittest.IsolatedAsyncioTestCase):
     async def test_filter_rejects_closed_thread(self) -> None:

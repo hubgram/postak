@@ -29,11 +29,15 @@ class AnswerDiscussionTest(unittest.IsolatedAsyncioTestCase):
 
 
 class FakeAccessPolicy:
-    def __init__(self, *, can_manage: bool = True) -> None:
+    def __init__(self, *, can_manage: bool = True, can_use: bool = False) -> None:
         self._can_manage = can_manage
+        self._can_use = can_use
 
     async def can_manage(self, message) -> bool:
         return self._can_manage
+
+    async def can_use(self, message, chat_id) -> bool:
+        return self._can_use
 
 
 class FakeBot:
@@ -175,20 +179,44 @@ class NewFromGroupTest(unittest.IsolatedAsyncioTestCase):
         message = FakeMessage(chat_id=20, message_id=8, sender_chat_id=20, user_id=None)
         store = InMemoryDialogStore()
 
-        await new_from_group(message, message.bot, store, target_channel_id=10)
+        await new_from_group(
+            message, message.bot, store, target_channel_id=10, access_policy=FakeAccessPolicy()
+        )
 
         self.assertEqual(message.bot.sent, [(10, NEW_MESSAGE)])
         self.assertEqual(message.bot.deleted, [(20, 8)])
 
-    async def test_non_admin_is_silently_ignored(self) -> None:
+    async def test_non_admin_is_ignored_when_group_is_not_public(self) -> None:
         message = FakeMessage(chat_id=20, user_id=7)
         message.bot.memberships[20] = SimpleNamespace(status=ChatMemberStatus.MEMBER)
         store = InMemoryDialogStore()
 
-        await new_from_group(message, message.bot, store, target_channel_id=10)
+        await new_from_group(
+            message,
+            message.bot,
+            store,
+            target_channel_id=10,
+            access_policy=FakeAccessPolicy(can_use=False),
+        )
 
         self.assertEqual(message.bot.sent, [])
         self.assertEqual(message.bot.deleted, [])
+
+    async def test_non_admin_starts_conversation_when_group_is_public(self) -> None:
+        message = FakeMessage(chat_id=20, message_id=8, user_id=7)
+        message.bot.memberships[20] = SimpleNamespace(status=ChatMemberStatus.MEMBER)
+        store = InMemoryDialogStore()
+
+        await new_from_group(
+            message,
+            message.bot,
+            store,
+            target_channel_id=10,
+            access_policy=FakeAccessPolicy(can_use=True),
+        )
+
+        self.assertEqual(message.bot.sent, [(10, NEW_MESSAGE)])
+        self.assertEqual(message.bot.deleted, [(20, 8)])
 
 
 if __name__ == "__main__":

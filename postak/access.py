@@ -112,12 +112,20 @@ class AccessPolicy:
         user = message.from_user
         return user is not None and await self._store.is_admin(user.id)
 
+    async def can_use(self, message: Message, chat_id: int) -> bool:
+        """Whether this user may act in a group outside any thread (e.g. /new)."""
+        scopes = (AccessScope.global_(), AccessScope.group(chat_id))
+        return await self._can_access(message, scopes)
+
     async def can_answer(self, message: Message, chat_id: int, thread_id: int) -> bool:
         scopes = (
             AccessScope.global_(),
             AccessScope.group(chat_id),
             AccessScope.thread(chat_id, thread_id),
         )
+        return await self._can_access(message, scopes)
+
+    async def _can_access(self, message: Message, scopes: tuple[AccessScope, ...]) -> bool:
         # Loops rather than any([await ...]) so each check short-circuits on the
         # first match instead of eagerly running every query.
         for scope in scopes:

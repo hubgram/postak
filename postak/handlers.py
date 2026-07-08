@@ -49,10 +49,18 @@ async def is_chat_admin(bot: Bot, message: Message) -> bool:
 
 
 async def new_from_group(
-    message: Message, bot: Bot, store: DialogStore, target_channel_id: int
+    message: Message,
+    bot: Bot,
+    store: DialogStore,
+    target_channel_id: int,
+    access_policy: AccessPolicy,
 ) -> None:
-    # An admin (named or anonymous) runs /new in the discussion group -> start it in the channel.
-    if await is_chat_admin(bot, message):
+    # A group admin can always start a new conversation; anyone else may too if
+    # the group (or global scope) has been made public, or they're allowed access.
+    allowed = await is_chat_admin(bot, message) or await access_policy.can_use(
+        message, message.chat.id
+    )
+    if allowed:
         await start_conversation(bot, target_channel_id, store)
         await _delete_command(bot, message)
 
