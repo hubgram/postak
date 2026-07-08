@@ -4,7 +4,8 @@ from types import SimpleNamespace
 
 from aiogram import Dispatcher
 
-from postak.app import Postak
+from postak.app import InServedChannel, Postak
+from postak.registry import ChannelRegistry
 from postak.store import InMemoryDialogStore
 
 
@@ -109,6 +110,19 @@ class PostakAppTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(postak.channels, [30])
         self.assertEqual(postak.channel_registry.channel_for_discussion(40), 30)
+
+
+class InServedChannelTest(unittest.IsolatedAsyncioTestCase):
+    async def test_reflects_channels_added_after_construction(self) -> None:
+        registry = ChannelRegistry([10])
+        channel_filter = InServedChannel(registry)
+        message = SimpleNamespace(chat=SimpleNamespace(id=20))
+
+        self.assertFalse(await channel_filter(message))
+
+        registry.add(20)
+
+        self.assertTrue(await channel_filter(message))
 
 
 if __name__ == "__main__":

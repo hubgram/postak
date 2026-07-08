@@ -30,6 +30,21 @@ from postak.store import SqliteDialogStore, Store, create_store
 Handler = Callable[..., Awaitable[Any]]
 
 
+class InServedChannel(BaseFilter):
+    """Passes channel posts in any currently-served channel.
+
+    Checks the live registry on every message instead of a list snapshot taken
+    at attach() time, so channels registered after startup (via /postak add or
+    auto-registration) match immediately, without a restart.
+    """
+
+    def __init__(self, channels: ChannelRegistry) -> None:
+        self._channels = channels
+
+    async def __call__(self, message: Message) -> bool:
+        return message.chat.id in self._channels.channels
+
+
 class FromDiscussion(BaseFilter):
     """Passes messages in a known discussion group, injecting its channel id.
 
@@ -162,7 +177,9 @@ class Postak:
     def attach(self, dp: Dispatcher) -> None:
         """Attach to an existing dispatcher: register handlers and inject services."""
         # /new in one of our channels opens a new conversation.
-        self.router.channel_post.register(new, Command("new"), F.chat.id.in_(self.channels))
+        self.router.channel_post.register(
+            new, Command("new"), InServedChannel(self.channel_registry)
+        )
         # /new by an admin in a linked discussion group opens one in that channel.
         self.router.message.register(
             new_from_group, Command("new"), FromDiscussion(self.channel_registry)
