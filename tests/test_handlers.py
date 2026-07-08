@@ -42,6 +42,7 @@ class FakeBot:
         self.chats: dict[int, SimpleNamespace] = {}
         self.memberships: dict[int, SimpleNamespace] = {}
         self.sent: list[tuple[int, str]] = []
+        self.deleted: list[tuple[int, int]] = []
 
     async def get_chat(self, chat_id):
         return self.chats[chat_id]
@@ -53,12 +54,21 @@ class FakeBot:
         self.sent.append((chat_id, text))
         return SimpleNamespace(chat=SimpleNamespace(id=chat_id), message_id=len(self.sent))
 
+    async def delete_message(self, chat_id, message_id):
+        self.deleted.append((chat_id, message_id))
+
 
 class FakeMessage:
     def __init__(
-        self, *, chat_id: int = 20, sender_chat_id: int | None = None, user_id: int | None = 1
+        self,
+        *,
+        chat_id: int = 20,
+        message_id: int = 99,
+        sender_chat_id: int | None = None,
+        user_id: int | None = 1,
     ) -> None:
         self.chat = SimpleNamespace(id=chat_id)
+        self.message_id = message_id
         self.bot = FakeBot()
         self.replies: list[str] = []
         self.sender_chat = (
@@ -82,9 +92,10 @@ class NewFromUnlinkedGroupTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(message.replies, ["You are not a Postak admin."])
         self.assertEqual(registry.channels, [])
+        self.assertEqual(message.bot.deleted, [])
 
     async def test_admin_registers_and_starts_conversation(self) -> None:
-        message = FakeMessage(chat_id=20)
+        message = FakeMessage(chat_id=20, message_id=55)
         message.bot.chats[20] = SimpleNamespace(
             id=20, type=ChatType.SUPERGROUP, linked_chat_id=10
         )
@@ -100,6 +111,7 @@ class NewFromUnlinkedGroupTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await store.channel_links(), [(10, 20)])
         self.assertEqual(message.bot.sent, [(10, NEW_MESSAGE)])
         self.assertEqual(message.replies, ["Added channel 10 linked to group 20."])
+        self.assertEqual(message.bot.deleted, [(20, 55)])
 
     async def test_admin_in_unlinked_group_reports_and_does_not_start(self) -> None:
         message = FakeMessage(chat_id=20)
@@ -120,6 +132,7 @@ class NewFromUnlinkedGroupTest(unittest.IsolatedAsyncioTestCase):
                 "Link them in the channel's Discussion settings first."
             ],
         )
+        self.assertEqual(message.bot.deleted, [])
 
     async def test_admin_without_post_permission_reports_and_does_not_start(self) -> None:
         message = FakeMessage(chat_id=20)
@@ -143,26 +156,29 @@ class NewFromUnlinkedGroupTest(unittest.IsolatedAsyncioTestCase):
                 "Grant it that permission, then try again."
             ],
         )
+        self.assertEqual(message.bot.deleted, [])
 
 
 class NewTest(unittest.IsolatedAsyncioTestCase):
-    async def test_starts_conversation(self) -> None:
-        message = FakeMessage(chat_id=30, user_id=None)
+    async def test_starts_conversation_and_deletes_the_command(self) -> None:
+        message = FakeMessage(chat_id=30, message_id=7, user_id=None)
         store = InMemoryDialogStore()
 
         await new(message, message.bot, store)
 
         self.assertEqual(message.bot.sent, [(30, NEW_MESSAGE)])
+        self.assertEqual(message.bot.deleted, [(30, 7)])
 
 
 class NewFromGroupTest(unittest.IsolatedAsyncioTestCase):
-    async def test_admin_starts_conversation(self) -> None:
-        message = FakeMessage(chat_id=20, sender_chat_id=20, user_id=None)
+    async def test_admin_starts_conversation_and_deletes_the_command(self) -> None:
+        message = FakeMessage(chat_id=20, message_id=8, sender_chat_id=20, user_id=None)
         store = InMemoryDialogStore()
 
         await new_from_group(message, message.bot, store, target_channel_id=10)
 
         self.assertEqual(message.bot.sent, [(10, NEW_MESSAGE)])
+        self.assertEqual(message.bot.deleted, [(20, 8)])
 
     async def test_non_admin_is_silently_ignored(self) -> None:
         message = FakeMessage(chat_id=20, user_id=7)
@@ -172,6 +188,7 @@ class NewFromGroupTest(unittest.IsolatedAsyncioTestCase):
         await new_from_group(message, message.bot, store, target_channel_id=10)
 
         self.assertEqual(message.bot.sent, [])
+        self.assertEqual(message.bot.deleted, [])
 
 
 if __name__ == "__main__":

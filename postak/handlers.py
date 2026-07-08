@@ -19,6 +19,12 @@ async def _acknowledge(message: Message) -> None:
         await message.react([ReactionTypeEmoji(emoji="👀")])
 
 
+async def _delete_command(bot: Bot, message: Message) -> None:
+    # Clean up the /new trigger once it's handled, so it doesn't linger as spam.
+    with contextlib.suppress(Exception):
+        await bot.delete_message(message.chat.id, message.message_id)
+
+
 async def start_conversation(bot: Bot, channel_id: int, store: DialogStore) -> None:
     """Post the new-conversation message to the channel; its auto-forward opens a thread."""
     sent = await bot.send_message(channel_id, NEW_MESSAGE)
@@ -28,6 +34,7 @@ async def start_conversation(bot: Bot, channel_id: int, store: DialogStore) -> N
 async def new(message: Message, bot: Bot, store: DialogStore) -> None:
     # /new posted in the channel itself.
     await start_conversation(bot, message.chat.id, store)
+    await _delete_command(bot, message)
 
 
 async def is_chat_admin(bot: Bot, message: Message) -> bool:
@@ -47,6 +54,7 @@ async def new_from_group(
     # An admin (named or anonymous) runs /new in the discussion group -> start it in the channel.
     if await is_chat_admin(bot, message):
         await start_conversation(bot, target_channel_id, store)
+        await _delete_command(bot, message)
 
 
 async def new_from_unlinked_group(
@@ -65,6 +73,7 @@ async def new_from_unlinked_group(
     channel_id = await register_channel(message, message.chat.id, store, channel_registry)
     if channel_id is not None:
         await start_conversation(bot, channel_id, store)
+        await _delete_command(bot, message)
 
 
 def forwarded_channel_post(message: Message) -> tuple[int, int] | None:
