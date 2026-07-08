@@ -23,6 +23,14 @@ class SettingsTest(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=True), self.assertRaises(RuntimeError):
             Settings.from_env()
 
+    def test_target_channel_id_is_optional(self) -> None:
+        env = {"BOT_TOKEN": "token", "LLM_MODEL": "gpt-4o-mini", "POSTAK_ADMINS": "1"}
+
+        with patch.dict("os.environ", env, clear=True):
+            settings = Settings.from_env()
+
+        self.assertEqual(settings.target_channel_ids, [])
+
 
 if __name__ == "__main__":
     unittest.main()

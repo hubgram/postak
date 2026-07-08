@@ -33,7 +33,7 @@ class Settings:
 
         return cls(
             bot_token=required("BOT_TOKEN"),
-            target_channel_ids=_parse_int_list(required("TARGET_CHANNEL_ID")),
+            target_channel_ids=_parse_int_list(os.getenv("TARGET_CHANNEL_ID", "")),
             model=required("LLM_MODEL"),
             llm_base_url=os.getenv("LLM_ENDPOINT") or None,
             llm_api_key=os.getenv("LLM_API_KEY") or "not-needed",
