@@ -53,7 +53,7 @@ async def _drain(message, tokens) -> str:
 class SetChannelTitleTest(unittest.IsolatedAsyncioTestCase):
     async def test_propagates_telegram_errors(self) -> None:
         async def failing_edit(text, chat_id, message_id, parse_mode=None) -> None:
-            raise TelegramBadRequest(method=SimpleNamespace(), message="message not modified")
+            raise TelegramBadRequest(method=SimpleNamespace(), message="chat not found")
 
         bot = SimpleNamespace(edit_message_text=failing_edit)
 
@@ -170,7 +170,7 @@ class FirstMessageGenerationTest(unittest.IsolatedAsyncioTestCase):
         msg = SimpleNamespace(chat=SimpleNamespace(id=10), text="hi", caption=None, bot=object())
 
         async def failing_title(bot, channel_post, title) -> None:
-            raise TelegramBadRequest(method=SimpleNamespace(), message="message not modified")
+            raise TelegramBadRequest(method=SimpleNamespace(), message="chat not found")
 
         with (
             patch.object(conversation_module, "stream_tokens", _drain),

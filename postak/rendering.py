@@ -4,6 +4,7 @@ import unicodedata
 from collections.abc import AsyncIterator
 
 from aiogram.enums import ChatAction
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import InputRichMessage, Message
 from telegramify_markdown.stream import EditStream
 
@@ -58,11 +59,15 @@ async def stream_tokens(message: Message, tokens: AsyncIterator[str]) -> str:
         return sent.message_id
 
     async def edit_message(message_id: int, payload) -> None:
-        await bot.edit_message_text(
-            rich_message=styled_rich(payload),
-            chat_id=message.chat.id,
-            message_id=message_id,
-        )
+        try:
+            await bot.edit_message_text(
+                rich_message=styled_rich(payload),
+                chat_id=message.chat.id,
+                message_id=message_id,
+            )
+        except TelegramBadRequest as exc:
+            if "message is not modified" not in exc.message.lower():
+                raise
 
     with contextlib.suppress(Exception):
         await bot.send_chat_action(
