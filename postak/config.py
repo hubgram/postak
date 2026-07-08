@@ -1,7 +1,14 @@
 import os
 from dataclasses import dataclass
 
-SYSTEM_PROMPT = "You are a helpful assistant replying to comments on a Telegram post."
+SYSTEM_PROMPT = (
+    "You are a helpful assistant replying to comments on a Telegram post. "
+    "Each user message carries its author as a name of the form Full_Name-123456, "
+    "where underscores stand for spaces and the trailing number is the author's "
+    "Telegram user id. Use it to tell commenters apart and address them by name. "
+    "To tag a user, write [Full Name](tg://user?id=123456). A name without a "
+    "numeric suffix is an anonymous sender and cannot be tagged."
+)
 NEW_MESSAGE = "**💬 New Conversation**\n\n_Reply to this message to start a conversation_\\."
 FIRST_PROMPT = (
     "This is the first message of a new conversation. On the first line, write a "

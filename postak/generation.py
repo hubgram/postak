@@ -5,6 +5,7 @@ is the default, backed by any OpenAI-compatible endpoint. Titling, history windo
 and delivery to Telegram stay in Postak, so a provider only yields text deltas.
 """
 
+import re
 from collections.abc import AsyncIterator
 from typing import Any, Protocol, cast, runtime_checkable
 
@@ -13,11 +14,34 @@ from openai.types.chat import ChatCompletionMessageParam
 
 from postak.store import Message
 
+# The API rejects participant names containing whitespace or any of < | \ / >.
+_NAME_FORBIDDEN = re.compile(r"[\s<|\\/>]+")
+_NAME_MAX = 64
+
 
 class Generator(Protocol):
     def tokens(self, messages: list[Message]) -> AsyncIterator[str]:
         """Stream the assistant reply token-by-token for this dialog."""
         ...
+
+
+def _participant_name(name: str, user_id: int | None) -> str:
+    sanitized = _NAME_FORBIDDEN.sub("_", name).strip("_") or "Unknown"
+    if user_id is None:
+        return sanitized[:_NAME_MAX]
+    suffix = f"-{user_id}"
+    return sanitized[: _NAME_MAX - len(suffix)] + suffix
+
+
+def prepare_messages(messages: list[Message]) -> list[ChatCompletionMessageParam]:
+    """Move stored author identity into the API's per-message name field."""
+    prepared: list[ChatCompletionMessageParam] = []
+    for message in messages:
+        item: dict[str, str] = {"role": message["role"], "content": message["content"]}
+        if (name := message.get("user_name")) is not None:
+            item["name"] = _participant_name(name, message.get("user_id"))
+        prepared.append(cast(ChatCompletionMessageParam, item))
+    return prepared
 
 
 async def collect_tokens(tokens: AsyncIterator[str]) -> str:
@@ -66,7 +90,7 @@ class OpenAIGenerator:
     async def tokens(self, messages: list[Message]) -> AsyncIterator[str]:
         stream = await self._client.chat.completions.create(
             model=self._model,
-            messages=cast(list[ChatCompletionMessageParam], messages),
+            messages=prepare_messages(messages),
             stream=True,
             **self._params,
         )
