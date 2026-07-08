@@ -8,6 +8,15 @@ def _scope_values(scope: AccessKey) -> tuple[str, int, int]:
     return kind, chat_id or 0, thread_id or 0
 
 
+def _row_message(role: str, content: str, user_id: int | None, user_name: str | None) -> Message:
+    message: Message = {"role": role, "content": content}
+    if user_id is not None:
+        message["user_id"] = user_id
+    if user_name is not None:
+        message["user_name"] = user_name
+    return message
+
+
 class SqliteDialogStore:
     """SQLite-backed DialogStore via aiosqlite. Durable across restarts."""
 
@@ -57,7 +66,9 @@ class SqliteDialogStore:
                 chat_id INTEGER NOT NULL,
                 thread_id INTEGER NOT NULL,
                 role TEXT NOT NULL,
-                content TEXT NOT NULL
+                content TEXT NOT NULL,
+                user_id INTEGER,
+                user_name TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages (chat_id, thread_id, id);
             CREATE TABLE IF NOT EXISTS access_admins (
@@ -150,8 +161,12 @@ class SqliteDialogStore:
 
     async def add_many(self, key: Key, messages: list[Message]) -> None:
         await self._conn.executemany(
-            "INSERT INTO messages (chat_id, thread_id, role, content) VALUES (?, ?, ?, ?)",
-            [(*key, message["role"], message["content"]) for message in messages],
+            "INSERT INTO messages (chat_id, thread_id, role, content, user_id, user_name) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (*key, m["role"], m["content"], m.get("user_id"), m.get("user_name"))
+                for m in messages
+            ],
         )
         await self._conn.commit()
 
@@ -160,14 +175,12 @@ class SqliteDialogStore:
         # instead of the whole thread, then keep the leading system prompt even
         # after it has scrolled out of the window (mirrors window_messages).
         cursor = await self._conn.execute(
-            "SELECT id, role, content FROM messages WHERE chat_id = ? AND thread_id = ? "
-            "ORDER BY id DESC LIMIT ?",
+            "SELECT id, role, content, user_id, user_name FROM messages "
+            "WHERE chat_id = ? AND thread_id = ? ORDER BY id DESC LIMIT ?",
             (*key, self._window),
         )
         tail = list(await cursor.fetchall())[::-1]
-        messages: list[Message] = [
-            {"role": role, "content": content} for _id, role, content in tail
-        ]
+        messages: list[Message] = [_row_message(*row[1:]) for row in tail]
         if len(tail) < self._window:  # the tail already holds the whole thread
             return messages
 
@@ -187,8 +200,12 @@ class SqliteDialogStore:
             key,
         )
         await self._conn.executemany(
-            "INSERT INTO messages (chat_id, thread_id, role, content) VALUES (?, ?, ?, ?)",
-            [(*key, message["role"], message["content"]) for message in messages],
+            "INSERT INTO messages (chat_id, thread_id, role, content, user_id, user_name) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (*key, m["role"], m["content"], m.get("user_id"), m.get("user_name"))
+                for m in messages
+            ],
         )
         await self._conn.commit()
 

@@ -390,7 +390,7 @@ def _compression_messages(history: list[StoreMessage]) -> list[StoreMessage]:
 
 
 def _compacted_history(history: list[StoreMessage], summary: str) -> list[StoreMessage]:
-    compacted = [
+    compacted: list[StoreMessage] = [
         {
             "role": "assistant",
             "content": f"Conversation summary so far:\n{summary}",

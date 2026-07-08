@@ -1,7 +1,16 @@
-from typing import Protocol, TypeAlias
+from typing import Protocol, TypeAlias, TypedDict
 
-# A single chat message in OpenAI format: {"role": ..., "content": ...}.
-Message: TypeAlias = dict[str, str]
+
+class _MessageIdentity(TypedDict, total=False):
+    user_id: int
+    user_name: str
+
+
+class Message(_MessageIdentity):
+    """A chat message in OpenAI format, plus the Telegram author on user rows."""
+
+    role: str
+    content: str
 
 # Identifies a thread or a pending post within one chat: (chat_id, thread_id) for
 # dialogs, (channel_chat_id, channel_post_id) for pending posts. Telegram ids are
