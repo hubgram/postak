@@ -11,6 +11,7 @@ from aiogram.utils.text_decorations import markdown_decoration
 from postak.access import AccessPolicy
 from postak.channels import register_channel
 from postak.config import (
+    NAME_INSTRUCTION,
     NEW_CONVERSATION_CREATOR_TEMPLATE,
     NEW_CONVERSATION_GREETINGS,
     NEW_MESSAGE,
@@ -126,7 +127,11 @@ async def open_discussion(
     origin = forwarded_channel_post(message)
     if origin is not None and await store.take_pending(origin):
         system = await store.get_system_prompt(GLOBAL_PROMPT) or system_prompt
-        await store.start((message.chat.id, message.message_id), origin, system=system)
+        await store.start(
+            (message.chat.id, message.message_id),
+            origin,
+            system=f"{system}\n\n{NAME_INSTRUCTION}",
+        )
 
 
 async def answer_discussion(

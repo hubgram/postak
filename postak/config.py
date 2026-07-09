@@ -1,11 +1,13 @@
 import os
 from dataclasses import dataclass
 
-SYSTEM_PROMPT = (
-    "You reply in a Telegram discussion thread. User messages may have a `name` "
-    "like `Full_Name-123456`: underscores mean spaces and the number is the user ID. "
-    "Use it only to distinguish people. To mention a user with an ID, write "
-    "`[Full Name](tg://user?id=123456)`; otherwise, do not tag them."
+SYSTEM_PROMPT = "You reply in a Telegram discussion thread."
+# Appended to every thread's system prompt, including admin-set ones.
+NAME_INSTRUCTION = (
+    "User messages may have a `name` like `Full_Name-123456`: underscores mean "
+    "spaces and the number is the user ID. Use it only to distinguish people. "
+    "To mention a user with an ID, write `[Full Name](tg://user?id=123456)`; "
+    "otherwise, do not tag them."
 )
 NEW_MESSAGE = "**💬 New Conversation**"
 NEW_CONVERSATION_GREETINGS = (

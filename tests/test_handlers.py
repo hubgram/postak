@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from aiogram.enums import ChatMemberStatus, ChatType
 
 from postak.config import (
+    NAME_INSTRUCTION,
     NEW_CONVERSATION_CREATOR_TEMPLATE,
     NEW_CONVERSATION_GREETINGS,
     NEW_MESSAGE,
@@ -282,7 +283,10 @@ class OpenDiscussionTest(unittest.IsolatedAsyncioTestCase):
         await open_discussion(self._forward(), store, system_prompt="default system")
 
         history = await store.history((20, 5))
-        self.assertEqual(history, [{"role": "system", "content": "default system"}])
+        self.assertEqual(
+            history,
+            [{"role": "system", "content": f"default system\n\n{NAME_INSTRUCTION}"}],
+        )
 
     async def test_opens_thread_with_the_stored_global_prompt(self) -> None:
         store = InMemoryDialogStore()
@@ -292,7 +296,10 @@ class OpenDiscussionTest(unittest.IsolatedAsyncioTestCase):
         await open_discussion(self._forward(), store, system_prompt="default system")
 
         history = await store.history((20, 5))
-        self.assertEqual(history, [{"role": "system", "content": "db override"}])
+        self.assertEqual(
+            history,
+            [{"role": "system", "content": f"db override\n\n{NAME_INSTRUCTION}"}],
+        )
 
 
 if __name__ == "__main__":
