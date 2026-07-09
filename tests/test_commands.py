@@ -41,6 +41,7 @@ class FakeAccessPolicy:
 class FakePostak:
     def __init__(self) -> None:
         self.model = "old"
+        self.title_prompt = "title prompt"
         self.generator = FakeGenerator("digest text")
         self.channel_registry = ChannelRegistry()
 

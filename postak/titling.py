@@ -36,7 +36,12 @@ def is_first_message(history: list[Message]) -> bool:
     return not any(m["role"] == "assistant" for m in history)
 
 
-def build_title_messages(history: list[Message]) -> list[Message]:
+def build_title_messages(
+    history: list[Message], title_prompt: str = FIRST_PROMPT
+) -> list[Message]:
     """History with the title-generation instruction folded into the system prompt."""
-    system = f"{SYSTEM_PROMPT}\n\n{FIRST_PROMPT}"
+    system_prompt = (
+        history[0]["content"] if history and history[0]["role"] == "system" else SYSTEM_PROMPT
+    )
+    system = f"{system_prompt}\n\n{title_prompt}"
     return [{"role": "system", "content": system}, *(m for m in history if m["role"] != "system")]

@@ -2,17 +2,15 @@ import os
 from dataclasses import dataclass
 
 SYSTEM_PROMPT = (
-    "You are a helpful assistant replying to comments on a Telegram post. "
-    "Each user message carries its author as a name of the form Full_Name-123456, "
-    "where underscores stand for spaces and the trailing number is the author's "
-    "Telegram user id. Use it to tell commenters apart and address them by name. "
-    "To tag a user, write [Full Name](tg://user?id=123456). A name without a "
-    "numeric suffix is an anonymous sender and cannot be tagged."
+    "You reply in a Telegram discussion thread. User messages may have a `name` "
+    "like `Full_Name-123456`: underscores mean spaces and the number is the user ID. "
+    "Use it only to distinguish people. To mention a user with an ID, write "
+    "`[Full Name](tg://user?id=123456)`; otherwise, do not tag them."
 )
 NEW_MESSAGE = "**💬 New Conversation**\n\n_Reply to this message to start a conversation_\\."
 FIRST_PROMPT = (
-    "This is the first message of a new conversation. On the first line, write a "
-    "short title (3-6 words) for it. From the next line onward, write your answer."
+    "First reply only: write a 3-6 word title on the first line, then the reply. "
+    "Do not label either."
 )
 TITLE_MAX = 100
 

@@ -8,6 +8,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
 
+from postak.config import FIRST_PROMPT
 from postak.generation import Generator
 from postak.rendering import stream_tokens
 from postak.store import DialogStore, Key
@@ -54,9 +55,12 @@ class Conversations:
     Injected as a dependency instead of using module-level state.
     """
 
-    def __init__(self, generator: Generator, store: DialogStore) -> None:
+    def __init__(
+        self, generator: Generator, store: DialogStore, title_prompt: str = FIRST_PROMPT
+    ) -> None:
         self._generator = generator
         self._store = store
+        self._title_prompt = title_prompt
         self._states: dict[Key, ThreadState] = {}
 
     def enqueue(self, message: Message, thread_id: int) -> None:
@@ -118,7 +122,9 @@ class Conversations:
             # First message: the LLM returns "title\nanswer". Stream only the answer
             # (title line hidden) and store it before touching the channel post, so
             # a title-edit failure can't erase an answer the user already received.
-            splitter = TitleSplitter(self._generator.tokens(build_title_messages(history)))
+            splitter = TitleSplitter(
+                self._generator.tokens(build_title_messages(history, self._title_prompt))
+            )
             answer = await stream_tokens(reply_to, splitter.stream())
             await self._store.add(key, "assistant", answer or splitter.title)
             # Title the channel post from the first line either way, so it never

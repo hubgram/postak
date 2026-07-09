@@ -83,6 +83,20 @@ class PostakAppTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(postak._startup, startup_callbacks)
         self.assertIn(postak._shutdown, shutdown_callbacks)
 
+    async def test_custom_prompts_are_injected_into_the_dispatcher(self) -> None:
+        postak = Postak(
+            generator=StubGenerator(),
+            store=InMemoryDialogStore(),
+            system_prompt="custom system",
+            title_prompt="custom title",
+        )
+        dp = Dispatcher()
+
+        postak.attach(dp)
+
+        self.assertEqual(dp["system_prompt"], "custom system")
+        self.assertEqual(postak.conversations._title_prompt, "custom title")
+
     async def test_dispatcher_lifecycle_hooks_call_explicit_methods(self) -> None:
         postak = RecordingPostak()
 

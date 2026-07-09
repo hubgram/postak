@@ -94,12 +94,14 @@ def forwarded_channel_post(message: Message) -> tuple[int, int] | None:
     return None
 
 
-async def open_discussion(message: Message, store: DialogStore) -> None:
+async def open_discussion(
+    message: Message, store: DialogStore, system_prompt: str = SYSTEM_PROMPT
+) -> None:
     # A channel post is auto-forwarded into the discussion group as the root of
     # its comment thread. If it came from a /new post, open a dialog for it.
     origin = forwarded_channel_post(message)
     if origin is not None and await store.take_pending(origin):
-        await store.start((message.chat.id, message.message_id), origin, system=SYSTEM_PROMPT)
+        await store.start((message.chat.id, message.message_id), origin, system=system_prompt)
 
 
 async def answer_discussion(

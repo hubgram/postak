@@ -9,6 +9,7 @@ from aiogram.types import Message
 
 from postak.access import AccessPolicy, AccessScope
 from postak.channels import register_channel
+from postak.config import FIRST_PROMPT
 from postak.conversation import set_channel_title
 from postak.generation import collect_tokens
 from postak.registry import ChannelRegistry
@@ -59,6 +60,11 @@ class PostakController(Protocol):
     @property
     def model(self) -> str:
         """The model currently used for generations."""
+        ...
+
+    @property
+    def title_prompt(self) -> str:
+        """Instruction used when generating the first reply and post title."""
         ...
 
     @property
@@ -151,7 +157,7 @@ async def postak_admin(
             case ["compress"]:
                 await _compress_thread(message, store, pt.generator)
             case ["title"]:
-                await _regenerate_thread_title(message, store, pt.generator)
+                await _regenerate_thread_title(message, store, pt.generator, pt.title_prompt)
             case ["settitle", *title_parts]:
                 await _set_thread_title(message, store, " ".join(title_parts).strip())
             case ["delete"]:
@@ -307,7 +313,10 @@ async def _set_thread_title(message: Message, store: DialogStore, title: str) ->
 
 
 async def _regenerate_thread_title(
-    message: Message, store: DialogStore, generator: CommandGenerator
+    message: Message,
+    store: DialogStore,
+    generator: CommandGenerator,
+    title_prompt: str = FIRST_PROMPT,
 ) -> None:
     thread_id = discussion_thread_id(message)
     if thread_id is None:
@@ -319,7 +328,9 @@ async def _regenerate_thread_title(
         await _reply(message, "This thread is not a Postak conversation.")
         return
 
-    splitter = TitleSplitter(generator.tokens(build_title_messages(await store.history(key))))
+    splitter = TitleSplitter(
+        generator.tokens(build_title_messages(await store.history(key), title_prompt))
+    )
     await collect_tokens(splitter.stream())
     if not splitter.title:
         await _reply(message, "No title generated.")

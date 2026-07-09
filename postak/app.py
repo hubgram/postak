@@ -82,7 +82,7 @@ class Postak:
         self.system_prompt = system_prompt
         self.title_prompt = title_prompt
         self.router = Router(name="pt")
-        self.conversations = Conversations(self.generator, self.store)
+        self.conversations = Conversations(self.generator, self.store, self.title_prompt)
         self.access_policy = AccessPolicy(self.store, default_access=default_access)
         self.admin_registry = AdminRegistry(admins)
         self._initial_allowed: set[tuple[int, AccessScope]] = set()
@@ -203,6 +203,7 @@ class Postak:
         dp.include_router(self.router)
         dp["pt"] = self
         dp["store"] = self.store
+        dp["system_prompt"] = self.system_prompt
         dp["conversations"] = self.conversations
         dp["access_policy"] = self.access_policy
         dp["channel_registry"] = self.channel_registry
