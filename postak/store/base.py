@@ -23,6 +23,9 @@ AccessKey: TypeAlias = tuple[str, int | None, int | None]
 
 DEFAULT_WINDOW = 20
 
+# The scope of the global default system prompt in PromptStore.
+GLOBAL_PROMPT: Key = (0, 0)
+
 
 def window_messages(messages: list[Message], window: int) -> list[Message]:
     """Keep the leading system prompt (if any) plus the last `window` messages."""
@@ -143,7 +146,23 @@ class ChannelStore(Protocol):
         ...
 
 
-class Store(DialogStore, AccessStore, ChannelStore, Protocol):
+class PromptStore(Protocol):
+    """Persists system prompts per (chat_id, thread_id) scope; (0, 0) is the global one."""
+
+    async def get_system_prompt(self, key: Key) -> str | None:
+        """The system prompt stored for this scope, or None when unset."""
+        ...
+
+    async def set_system_prompt(self, key: Key, prompt: str) -> None:
+        """Store the system prompt for this scope."""
+        ...
+
+    async def delete_system_prompt(self, key: Key) -> None:
+        """Remove the stored system prompt for this scope."""
+        ...
+
+
+class Store(DialogStore, AccessStore, ChannelStore, PromptStore, Protocol):
     """Combined storage contract used by Postak."""
 
     pass

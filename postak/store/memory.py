@@ -13,6 +13,7 @@ class InMemoryDialogStore:
         self._allowed: set[tuple[int, AccessKey]] = set()
         self._public: dict[AccessKey, bool] = {}
         self._channel_links: dict[int, int] = {}
+        self._sysprompts: dict[Key, str] = {}
 
     async def mark_pending(self, key: Key) -> None:
         self._pending.add(key)
@@ -83,6 +84,15 @@ class InMemoryDialogStore:
         self._public = {
             scope: public for scope, public in self._public.items() if scope[1] != chat_id
         }
+
+    async def get_system_prompt(self, key: Key) -> str | None:
+        return self._sysprompts.get(key)
+
+    async def set_system_prompt(self, key: Key, prompt: str) -> None:
+        self._sysprompts[key] = prompt
+
+    async def delete_system_prompt(self, key: Key) -> None:
+        self._sysprompts.pop(key, None)
 
     async def add_channel(self, channel_id: int, discussion_group_id: int) -> None:
         self._channel_links[channel_id] = discussion_group_id

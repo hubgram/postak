@@ -1,11 +1,13 @@
 from postak.store.base import (
     DEFAULT_WINDOW,
+    GLOBAL_PROMPT,
     AccessKey,
     AccessStore,
     ChannelStore,
     DialogStore,
     Key,
     Message,
+    PromptStore,
     Store,
     window_messages,
 )
@@ -14,6 +16,7 @@ from postak.store.sqlite import SqliteDialogStore
 
 __all__ = [
     "DEFAULT_WINDOW",
+    "GLOBAL_PROMPT",
     "AccessKey",
     "AccessStore",
     "ChannelStore",
@@ -21,6 +24,7 @@ __all__ = [
     "InMemoryDialogStore",
     "Key",
     "Message",
+    "PromptStore",
     "SqliteDialogStore",
     "Store",
     "create_store",

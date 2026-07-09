@@ -32,6 +32,7 @@ class SqliteDialogStore:
         self._public_cache: dict[tuple[str, int, int], bool | None] = {}
         self._admin_cache: dict[int, bool] = {}
         self._allowed_cache: dict[tuple[int, tuple[str, int, int]], bool] = {}
+        self._prompt_cache: dict[Key, str | None] = {}
 
     @property
     def _conn(self) -> aiosqlite.Connection:
@@ -92,6 +93,12 @@ class SqliteDialogStore:
                 channel_id INTEGER PRIMARY KEY,
                 discussion_group_id INTEGER NOT NULL UNIQUE
             );
+            CREATE TABLE IF NOT EXISTS sysprompts (
+                chat_id INTEGER NOT NULL,
+                thread_id INTEGER NOT NULL,
+                prompt TEXT NOT NULL,
+                PRIMARY KEY (chat_id, thread_id)
+            );
             """
         )
         await self._db.commit()
@@ -104,6 +111,7 @@ class SqliteDialogStore:
         self._public_cache.clear()
         self._admin_cache.clear()
         self._allowed_cache.clear()
+        self._prompt_cache.clear()
 
     async def mark_pending(self, key: Key) -> None:
         await self._conn.execute(
@@ -325,6 +333,33 @@ class SqliteDialogStore:
         await self._conn.commit()
         self._allowed_cache.clear()
         self._public_cache.clear()
+
+    async def get_system_prompt(self, key: Key) -> str | None:
+        if key in self._prompt_cache:
+            return self._prompt_cache[key]
+        cursor = await self._conn.execute(
+            "SELECT prompt FROM sysprompts WHERE chat_id = ? AND thread_id = ?", key
+        )
+        row = await cursor.fetchone()
+        result = row[0] if row else None
+        self._prompt_cache[key] = result
+        return result
+
+    async def set_system_prompt(self, key: Key, prompt: str) -> None:
+        await self._conn.execute(
+            "INSERT INTO sysprompts (chat_id, thread_id, prompt) VALUES (?, ?, ?) "
+            "ON CONFLICT(chat_id, thread_id) DO UPDATE SET prompt = excluded.prompt",
+            (*key, prompt),
+        )
+        await self._conn.commit()
+        self._prompt_cache[key] = prompt
+
+    async def delete_system_prompt(self, key: Key) -> None:
+        await self._conn.execute(
+            "DELETE FROM sysprompts WHERE chat_id = ? AND thread_id = ?", key
+        )
+        await self._conn.commit()
+        self._prompt_cache[key] = None
 
     async def add_channel(self, channel_id: int, discussion_group_id: int) -> None:
         await self._conn.execute(
