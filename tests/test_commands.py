@@ -8,7 +8,7 @@ from aiogram.enums import ChatMemberStatus, ChatType
 from postak import commands as commands_module
 from postak.commands import POSTAK_HELP, POSTAK_USAGE, _reply, postak_admin
 from postak.registry import ChannelRegistry
-from postak.store import InMemoryDialogStore
+from postak.store import GLOBAL_PROMPT, InMemoryDialogStore
 
 
 async def drain_stream(message, tokens) -> str:
@@ -42,6 +42,7 @@ class FakePostak:
     def __init__(self) -> None:
         self.model = "old"
         self.title_prompt = "title prompt"
+        self.system_prompt = "default system"
         self.generator = FakeGenerator("digest text")
         self.channel_registry = ChannelRegistry()
 
@@ -144,6 +145,46 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(pt.model, "next")
         self.assertEqual(message.replies, ["Model changed to next."])
+
+    async def test_sysprompt_shows_the_default_when_unset(self) -> None:
+        message = FakeMessage()
+        pt = FakePostak()
+        command = SimpleNamespace(args="sysprompt")
+
+        await postak_admin(message, command, FakeAccessPolicy(), pt, InMemoryDialogStore())
+
+        self.assertEqual(message.replies, ["Default system prompt:\ndefault system"])
+
+    async def test_sysprompt_set_stores_and_shows_the_override(self) -> None:
+        message = FakeMessage()
+        store = InMemoryDialogStore()
+        command = SimpleNamespace(args="sysprompt Be terse.  Answer in Arabic.")
+
+        await postak_admin(message, command, FakeAccessPolicy(), FakePostak(), store)
+        show = SimpleNamespace(args="sysprompt")
+        await postak_admin(message, show, FakeAccessPolicy(), FakePostak(), store)
+
+        self.assertEqual(
+            await store.get_system_prompt(GLOBAL_PROMPT), "Be terse.  Answer in Arabic."
+        )
+        self.assertEqual(
+            message.replies,
+            [
+                "System prompt updated. New conversations will use it.",
+                "Be terse.  Answer in Arabic.",
+            ],
+        )
+
+    async def test_sysprompt_delete_resets_to_default(self) -> None:
+        message = FakeMessage()
+        store = InMemoryDialogStore()
+        await store.set_system_prompt(GLOBAL_PROMPT, "override")
+        command = SimpleNamespace(args="sysprompt delete")
+
+        await postak_admin(message, command, FakeAccessPolicy(), FakePostak(), store)
+
+        self.assertIsNone(await store.get_system_prompt(GLOBAL_PROMPT))
+        self.assertEqual(message.replies, ["System prompt reset to default."])
 
     async def test_admin_list_reports_admin_ids(self) -> None:
         message = FakeMessage()

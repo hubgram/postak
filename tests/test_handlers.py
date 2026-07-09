@@ -8,9 +8,15 @@ from postak.config import (
     NEW_CONVERSATION_GREETINGS,
     NEW_MESSAGE,
 )
-from postak.handlers import answer_discussion, new, new_from_group, new_from_unlinked_group
+from postak.handlers import (
+    answer_discussion,
+    new,
+    new_from_group,
+    new_from_unlinked_group,
+    open_discussion,
+)
 from postak.registry import ChannelRegistry
-from postak.store import InMemoryDialogStore
+from postak.store import GLOBAL_PROMPT, InMemoryDialogStore
 
 
 def tagged(name: str, user_id: int) -> list[str]:
@@ -20,12 +26,12 @@ def tagged(name: str, user_id: int) -> list[str]:
         tagged_greeting = NEW_CONVERSATION_CREATOR_TEMPLATE.format(
             user=mention, greeting=greeting
         )
-        messages.append(f"{NEW_MESSAGE}\n\n{tagged_greeting}")
+        messages.append(f"{NEW_MESSAGE}\n\n_{tagged_greeting}_")
     return messages
 
 
 def anonymous() -> list[str]:
-    return [f"{NEW_MESSAGE}\n\n{greeting}" for greeting in NEW_CONVERSATION_GREETINGS]
+    return [f"{NEW_MESSAGE}\n\n_{greeting}_" for greeting in NEW_CONVERSATION_GREETINGS]
 
 
 async def _record(sink: list, value) -> None:
@@ -257,6 +263,36 @@ class NewFromGroupTest(unittest.IsolatedAsyncioTestCase):
             message.bot.sent[0],
             [(10, text) for text in tagged(r"Ada\. Lovelace\!", 7)],
         )
+
+
+class OpenDiscussionTest(unittest.IsolatedAsyncioTestCase):
+    def _forward(self) -> SimpleNamespace:
+        return SimpleNamespace(
+            chat=SimpleNamespace(id=20),
+            message_id=5,
+            forward_origin=None,
+            forward_from_chat=SimpleNamespace(id=30),
+            forward_from_message_id=40,
+        )
+
+    async def test_opens_thread_with_the_default_prompt(self) -> None:
+        store = InMemoryDialogStore()
+        await store.mark_pending((30, 40))
+
+        await open_discussion(self._forward(), store, system_prompt="default system")
+
+        history = await store.history((20, 5))
+        self.assertEqual(history, [{"role": "system", "content": "default system"}])
+
+    async def test_opens_thread_with_the_stored_global_prompt(self) -> None:
+        store = InMemoryDialogStore()
+        await store.set_system_prompt(GLOBAL_PROMPT, "db override")
+        await store.mark_pending((30, 40))
+
+        await open_discussion(self._forward(), store, system_prompt="default system")
+
+        history = await store.history((20, 5))
+        self.assertEqual(history, [{"role": "system", "content": "db override"}])
 
 
 if __name__ == "__main__":

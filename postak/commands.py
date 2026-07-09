@@ -14,12 +14,12 @@ from postak.conversation import set_channel_title
 from postak.generation import collect_tokens
 from postak.registry import ChannelRegistry
 from postak.rendering import stream_tokens
-from postak.store import AccessKey, DialogStore, Store
+from postak.store import GLOBAL_PROMPT, AccessKey, DialogStore, Store
 from postak.store import Message as StoreMessage
 from postak.titling import TitleSplitter, build_title_messages
 
 POSTAK_USAGE = (
-    "Usage: /postak admin|access|add|remove|model|digest|compress|title|settitle|"
+    "Usage: /postak admin|access|add|remove|model|sysprompt|digest|compress|title|settitle|"
     "delete|regenerate ...\n"
     "See /postak help for details."
 )
@@ -46,7 +46,12 @@ In a thread
 
 Model
 - model get
-- model set <model>"""
+- model set <model>
+
+Prompt
+- sysprompt - show the global system prompt
+- sysprompt <text> - set it (used by new conversations)
+- sysprompt delete - reset to the built-in default"""
 
 TELEGRAM_TEXT_LIMIT = 4096
 
@@ -65,6 +70,11 @@ class PostakController(Protocol):
     @property
     def title_prompt(self) -> str:
         """Instruction used when generating the first reply and post title."""
+        ...
+
+    @property
+    def system_prompt(self) -> str:
+        """The built-in default system prompt for new conversations."""
         ...
 
     @property
@@ -152,6 +162,16 @@ async def postak_admin(
             case ["model", "set", model]:
                 pt.set_model(model)
                 await _reply(message, f"Model changed to {model}.")
+            case ["sysprompt"]:
+                stored = await store.get_system_prompt(GLOBAL_PROMPT)
+                await _reply(message, stored or f"Default system prompt:\n{pt.system_prompt}")
+            case ["sysprompt", "delete"]:
+                await store.delete_system_prompt(GLOBAL_PROMPT)
+                await _reply(message, "System prompt reset to default.")
+            case ["sysprompt", *_]:
+                text = (command.args or "").strip().removeprefix("sysprompt").strip()
+                await store.set_system_prompt(GLOBAL_PROMPT, text)
+                await _reply(message, "System prompt updated. New conversations will use it.")
             case ["digest"]:
                 await _digest_thread(message, store, pt.generator)
             case ["compress"]:
