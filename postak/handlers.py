@@ -4,7 +4,8 @@ import contextlib
 
 from aiogram import Bot
 from aiogram.enums import ChatMemberStatus
-from aiogram.types import Message, MessageOriginChannel, ReactionTypeEmoji
+from aiogram.types import Message, MessageOriginChannel, ReactionTypeEmoji, User
+from aiogram.utils.text_decorations import markdown_decoration
 
 from postak.access import AccessPolicy
 from postak.channels import register_channel
@@ -25,15 +26,27 @@ async def _delete_command(bot: Bot, message: Message) -> None:
         await bot.delete_message(message.chat.id, message.message_id)
 
 
-async def start_conversation(bot: Bot, channel_id: int, store: DialogStore) -> None:
+def _creator(message: Message) -> User | None:
+    # Anonymous creations (channel posts, anonymous admins, channel senders) get no tag.
+    return None if message.sender_chat is not None else message.from_user
+
+
+def _mention(user: User) -> str:
+    return f"[{markdown_decoration.quote(user.full_name)}](tg://user?id={user.id})"
+
+
+async def start_conversation(
+    bot: Bot, channel_id: int, store: DialogStore, creator: User | None = None
+) -> None:
     """Post the new-conversation message to the channel; its auto-forward opens a thread."""
-    sent = await bot.send_message(channel_id, NEW_MESSAGE)
+    text = NEW_MESSAGE if creator is None else f"{NEW_MESSAGE}\n\n👤 {_mention(creator)}"
+    sent = await bot.send_message(channel_id, text)
     await store.mark_pending((sent.chat.id, sent.message_id))
 
 
 async def new(message: Message, bot: Bot, store: DialogStore) -> None:
     # /new posted in the channel itself.
-    await start_conversation(bot, message.chat.id, store)
+    await start_conversation(bot, message.chat.id, store, creator=_creator(message))
     await _delete_command(bot, message)
 
 
@@ -61,7 +74,7 @@ async def new_from_group(
         message, message.chat.id
     )
     if allowed:
-        await start_conversation(bot, target_channel_id, store)
+        await start_conversation(bot, target_channel_id, store, creator=_creator(message))
         await _delete_command(bot, message)
 
 
@@ -80,7 +93,7 @@ async def new_from_unlinked_group(
 
     channel_id = await register_channel(message, message.chat.id, store, channel_registry)
     if channel_id is not None:
-        await start_conversation(bot, channel_id, store)
+        await start_conversation(bot, channel_id, store, creator=_creator(message))
         await _delete_command(bot, message)
 
 

@@ -9,6 +9,10 @@ from postak.registry import ChannelRegistry
 from postak.store import InMemoryDialogStore
 
 
+def tagged(name: str, user_id: int) -> str:
+    return f"{NEW_MESSAGE}\n\n👤 [{name}](tg://user?id={user_id})"
+
+
 async def _record(sink: list, value) -> None:
     sink.append(value)
 
@@ -78,7 +82,9 @@ class FakeMessage:
         self.sender_chat = (
             SimpleNamespace(id=sender_chat_id) if sender_chat_id is not None else None
         )
-        self.from_user = SimpleNamespace(id=user_id) if user_id is not None else None
+        self.from_user = (
+            SimpleNamespace(id=user_id, full_name="Test User") if user_id is not None else None
+        )
 
     async def reply(self, text: str, parse_mode=None) -> None:
         self.replies.append(text)
@@ -113,7 +119,7 @@ class NewFromUnlinkedGroupTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(registry.channel_for_discussion(20), 10)
         self.assertEqual(await store.channel_links(), [(10, 20)])
-        self.assertEqual(message.bot.sent, [(10, NEW_MESSAGE)])
+        self.assertEqual(message.bot.sent, [(10, tagged("Test User", 1))])
         self.assertEqual(message.replies, ["Added channel 10 linked to group 20."])
         self.assertEqual(message.bot.deleted, [(20, 55)])
 
@@ -215,8 +221,24 @@ class NewFromGroupTest(unittest.IsolatedAsyncioTestCase):
             access_policy=FakeAccessPolicy(can_use=True),
         )
 
-        self.assertEqual(message.bot.sent, [(10, NEW_MESSAGE)])
+        self.assertEqual(message.bot.sent, [(10, tagged("Test User", 7))])
         self.assertEqual(message.bot.deleted, [(20, 8)])
+
+    async def test_creator_name_is_escaped_for_markdown(self) -> None:
+        message = FakeMessage(chat_id=20, message_id=8, user_id=7)
+        message.from_user.full_name = "Ada. Lovelace!"
+        message.bot.memberships[20] = SimpleNamespace(status=ChatMemberStatus.MEMBER)
+        store = InMemoryDialogStore()
+
+        await new_from_group(
+            message,
+            message.bot,
+            store,
+            target_channel_id=10,
+            access_policy=FakeAccessPolicy(can_use=True),
+        )
+
+        self.assertEqual(message.bot.sent, [(10, tagged(r"Ada\. Lovelace\!", 7))])
 
 
 if __name__ == "__main__":
