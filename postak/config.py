@@ -7,7 +7,20 @@ SYSTEM_PROMPT = (
     "Use it only to distinguish people. To mention a user with an ID, write "
     "`[Full Name](tg://user?id=123456)`; otherwise, do not tag them."
 )
-NEW_MESSAGE = "**💬 New Conversation**\n\n_Reply to this message to start a conversation_\\."
+NEW_MESSAGE = "**💬 New Conversation**"
+NEW_CONVERSATION_GREETINGS = (
+    "What would you like to talk about?",
+    "What's on your mind?",
+    "Where would you like to begin?",
+    "How can I help today?",
+    "What are we exploring today?",
+    "What can I help you work through?",
+    "What would you like to figure out?",
+    "What are you thinking about?",
+    "Where should we start?",
+    "What can I help with?",
+)
+NEW_CONVERSATION_CREATOR_TEMPLATE = "Hi {user}, {greeting}"
 FIRST_PROMPT = (
     "First reply only: write a 3-6 word title on the first line, then the reply. "
     "Do not label either."

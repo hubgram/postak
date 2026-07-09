@@ -1,6 +1,7 @@
 """Conversation-flow handlers: opening threads and answering comments."""
 
 import contextlib
+from random import choice
 
 from aiogram import Bot
 from aiogram.enums import ChatMemberStatus
@@ -9,7 +10,12 @@ from aiogram.utils.text_decorations import markdown_decoration
 
 from postak.access import AccessPolicy
 from postak.channels import register_channel
-from postak.config import NEW_MESSAGE, SYSTEM_PROMPT
+from postak.config import (
+    NEW_CONVERSATION_CREATOR_TEMPLATE,
+    NEW_CONVERSATION_GREETINGS,
+    NEW_MESSAGE,
+    SYSTEM_PROMPT,
+)
 from postak.conversation import Conversations
 from postak.registry import ChannelRegistry
 from postak.store import DialogStore, Store
@@ -39,7 +45,12 @@ async def start_conversation(
     bot: Bot, channel_id: int, store: DialogStore, creator: User | None = None
 ) -> None:
     """Post the new-conversation message to the channel; its auto-forward opens a thread."""
-    text = NEW_MESSAGE if creator is None else f"{NEW_MESSAGE}\n\n👤 {_mention(creator)}"
+    greeting = choice(NEW_CONVERSATION_GREETINGS)
+    if creator is not None:
+        greeting = NEW_CONVERSATION_CREATOR_TEMPLATE.format(
+            user=_mention(creator), greeting=greeting
+        )
+    text = f"{NEW_MESSAGE}\n\n_{greeting}_"
     sent = await bot.send_message(channel_id, text)
     await store.mark_pending((sent.chat.id, sent.message_id))
 

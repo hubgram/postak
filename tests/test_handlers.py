@@ -3,14 +3,29 @@ from types import SimpleNamespace
 
 from aiogram.enums import ChatMemberStatus, ChatType
 
-from postak.config import NEW_MESSAGE
+from postak.config import (
+    NEW_CONVERSATION_CREATOR_TEMPLATE,
+    NEW_CONVERSATION_GREETINGS,
+    NEW_MESSAGE,
+)
 from postak.handlers import answer_discussion, new, new_from_group, new_from_unlinked_group
 from postak.registry import ChannelRegistry
 from postak.store import InMemoryDialogStore
 
 
-def tagged(name: str, user_id: int) -> str:
-    return f"{NEW_MESSAGE}\n\n👤 [{name}](tg://user?id={user_id})"
+def tagged(name: str, user_id: int) -> list[str]:
+    mention = f"[{name}](tg://user?id={user_id})"
+    messages = []
+    for greeting in NEW_CONVERSATION_GREETINGS:
+        tagged_greeting = NEW_CONVERSATION_CREATOR_TEMPLATE.format(
+            user=mention, greeting=greeting
+        )
+        messages.append(f"{NEW_MESSAGE}\n\n{tagged_greeting}")
+    return messages
+
+
+def anonymous() -> list[str]:
+    return [f"{NEW_MESSAGE}\n\n{greeting}" for greeting in NEW_CONVERSATION_GREETINGS]
 
 
 async def _record(sink: list, value) -> None:
@@ -119,7 +134,7 @@ class NewFromUnlinkedGroupTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(registry.channel_for_discussion(20), 10)
         self.assertEqual(await store.channel_links(), [(10, 20)])
-        self.assertEqual(message.bot.sent, [(10, tagged("Test User", 1))])
+        self.assertIn(message.bot.sent[0], [(10, text) for text in tagged("Test User", 1)])
         self.assertEqual(message.replies, ["Added channel 10 linked to group 20."])
         self.assertEqual(message.bot.deleted, [(20, 55)])
 
@@ -176,7 +191,7 @@ class NewTest(unittest.IsolatedAsyncioTestCase):
 
         await new(message, message.bot, store)
 
-        self.assertEqual(message.bot.sent, [(30, NEW_MESSAGE)])
+        self.assertIn(message.bot.sent[0], [(30, text) for text in anonymous()])
         self.assertEqual(message.bot.deleted, [(30, 7)])
 
 
@@ -189,7 +204,7 @@ class NewFromGroupTest(unittest.IsolatedAsyncioTestCase):
             message, message.bot, store, target_channel_id=10, access_policy=FakeAccessPolicy()
         )
 
-        self.assertEqual(message.bot.sent, [(10, NEW_MESSAGE)])
+        self.assertIn(message.bot.sent[0], [(10, text) for text in anonymous()])
         self.assertEqual(message.bot.deleted, [(20, 8)])
 
     async def test_non_admin_is_ignored_when_group_is_not_public(self) -> None:
@@ -221,7 +236,7 @@ class NewFromGroupTest(unittest.IsolatedAsyncioTestCase):
             access_policy=FakeAccessPolicy(can_use=True),
         )
 
-        self.assertEqual(message.bot.sent, [(10, tagged("Test User", 7))])
+        self.assertIn(message.bot.sent[0], [(10, text) for text in tagged("Test User", 7)])
         self.assertEqual(message.bot.deleted, [(20, 8)])
 
     async def test_creator_name_is_escaped_for_markdown(self) -> None:
@@ -238,7 +253,10 @@ class NewFromGroupTest(unittest.IsolatedAsyncioTestCase):
             access_policy=FakeAccessPolicy(can_use=True),
         )
 
-        self.assertEqual(message.bot.sent, [(10, tagged(r"Ada\. Lovelace\!", 7))])
+        self.assertIn(
+            message.bot.sent[0],
+            [(10, text) for text in tagged(r"Ada\. Lovelace\!", 7)],
+        )
 
 
 if __name__ == "__main__":
