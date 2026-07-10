@@ -7,7 +7,6 @@ from postak.store.base import (
     DialogStore,
     Key,
     Message,
-    PromptStore,
     Store,
     window_messages,
 )
@@ -24,7 +23,6 @@ __all__ = [
     "InMemoryDialogStore",
     "Key",
     "Message",
-    "PromptStore",
     "SqliteDialogStore",
     "Store",
     "create_store",

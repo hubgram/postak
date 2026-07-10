@@ -2,6 +2,9 @@ import aiosqlite
 
 from postak.store.base import DEFAULT_WINDOW, AccessKey, Key, Message
 
+# Prompts are read per reply and keyed per thread; cap the cache so it can't grow forever.
+_PROMPT_CACHE_MAX = 1024
+
 
 def _scope_values(scope: AccessKey) -> tuple[str, int, int]:
     kind, chat_id, thread_id = scope
@@ -334,6 +337,11 @@ class SqliteDialogStore:
         self._allowed_cache.clear()
         self._public_cache.clear()
 
+    def _cache_prompt(self, key: Key, value: str | None) -> None:
+        if key not in self._prompt_cache and len(self._prompt_cache) >= _PROMPT_CACHE_MAX:
+            self._prompt_cache.clear()
+        self._prompt_cache[key] = value
+
     async def get_system_prompt(self, key: Key) -> str | None:
         if key in self._prompt_cache:
             return self._prompt_cache[key]
@@ -342,7 +350,7 @@ class SqliteDialogStore:
         )
         row = await cursor.fetchone()
         result = row[0] if row else None
-        self._prompt_cache[key] = result
+        self._cache_prompt(key, result)
         return result
 
     async def set_system_prompt(self, key: Key, prompt: str) -> None:
@@ -352,14 +360,14 @@ class SqliteDialogStore:
             (*key, prompt),
         )
         await self._conn.commit()
-        self._prompt_cache[key] = prompt
+        self._cache_prompt(key, prompt)
 
     async def delete_system_prompt(self, key: Key) -> None:
         await self._conn.execute(
             "DELETE FROM sysprompts WHERE chat_id = ? AND thread_id = ?", key
         )
         await self._conn.commit()
-        self._prompt_cache[key] = None
+        self._cache_prompt(key, None)
 
     async def add_channel(self, channel_id: int, discussion_group_id: int) -> None:
         await self._conn.execute(

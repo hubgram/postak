@@ -1,7 +1,9 @@
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from postak.store import GLOBAL_PROMPT, InMemoryDialogStore, Message, SqliteDialogStore
+from postak.store import sqlite as sqlite_module
 
 MESSAGES: list[Message] = [
     {"role": "user", "content": "hi", "user_id": 7, "user_name": "Ada Lovelace"},
@@ -103,6 +105,20 @@ class SqliteSystemPromptTest(unittest.IsolatedAsyncioTestCase):
                 await store._conn.commit()
 
                 self.assertEqual(await store.get_system_prompt(GLOBAL_PROMPT), "override")
+            finally:
+                await store.close()
+
+    async def test_prompt_cache_is_bounded(self) -> None:
+        with tempfile.NamedTemporaryFile() as db:
+            store = SqliteDialogStore(db.name)
+            await store.connect()
+            try:
+                with patch.object(sqlite_module, "_PROMPT_CACHE_MAX", 2):
+                    for chat_id in range(5):
+                        await store.set_system_prompt((chat_id, 0), f"prompt {chat_id}")
+
+                    self.assertLessEqual(len(store._prompt_cache), 2)
+                    self.assertEqual(await store.get_system_prompt((3, 0)), "prompt 3")
             finally:
                 await store.close()
 

@@ -23,7 +23,7 @@ AccessKey: TypeAlias = tuple[str, int | None, int | None]
 
 DEFAULT_WINDOW = 20
 
-# The scope of the global default system prompt in PromptStore.
+# System prompts are scoped by (chat_id, thread_id); this is the global default's scope.
 GLOBAL_PROMPT: Key = (0, 0)
 
 
@@ -75,6 +75,18 @@ class DialogStore(Protocol):
 
     async def replace_history(self, key: Key, messages: list[Message]) -> None:
         """Replace the stored dialog history for a thread."""
+        ...
+
+    async def get_system_prompt(self, key: Key) -> str | None:
+        """The system prompt stored for this scope, or None when unset."""
+        ...
+
+    async def set_system_prompt(self, key: Key, prompt: str) -> None:
+        """Store the system prompt for this scope."""
+        ...
+
+    async def delete_system_prompt(self, key: Key) -> None:
+        """Remove the stored system prompt for this scope."""
         ...
 
 
@@ -146,23 +158,7 @@ class ChannelStore(Protocol):
         ...
 
 
-class PromptStore(Protocol):
-    """Persists system prompts per (chat_id, thread_id) scope; (0, 0) is the global one."""
-
-    async def get_system_prompt(self, key: Key) -> str | None:
-        """The system prompt stored for this scope, or None when unset."""
-        ...
-
-    async def set_system_prompt(self, key: Key, prompt: str) -> None:
-        """Store the system prompt for this scope."""
-        ...
-
-    async def delete_system_prompt(self, key: Key) -> None:
-        """Remove the stored system prompt for this scope."""
-        ...
-
-
-class Store(DialogStore, AccessStore, ChannelStore, PromptStore, Protocol):
+class Store(DialogStore, AccessStore, ChannelStore, Protocol):
     """Combined storage contract used by Postak."""
 
     pass
