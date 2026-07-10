@@ -7,6 +7,7 @@ from unittest.mock import patch
 from aiogram.exceptions import TelegramBadRequest
 
 from postak import conversation as conversation_module
+from postak.config import NAME_INSTRUCTION
 from postak.conversation import Conversations
 from postak.store import InMemoryDialogStore, Key
 
@@ -35,12 +36,14 @@ class FailingConversations(Conversations):
 
 
 class LineGenerator:
-    """Yields a whole model reply as one token."""
+    """Yields a whole model reply as one token, recording the prompt it received."""
 
     def __init__(self, text: str) -> None:
         self._text = text
+        self.messages: list = []
 
     async def tokens(self, messages) -> AsyncIterator[str]:
+        self.messages = messages
         yield self._text
 
 
@@ -160,6 +163,34 @@ class UserMessageTest(unittest.TestCase):
         self.assertEqual(
             conversation_module._user_message(msg, "hi"), {"role": "user", "content": "hi"}
         )
+
+
+class ThreadPromptOverrideTest(unittest.IsolatedAsyncioTestCase):
+    async def test_thread_prompt_replaces_the_stored_system_message(self) -> None:
+        store = InMemoryDialogStore()
+        await store.start((10, 20), (30, 40), system="sys")
+        await store.add((10, 20), "assistant", "earlier reply")
+        await store.set_system_prompt((10, 20), "thread prompt")
+        generator = LineGenerator("reply")
+        conversations = Conversations(generator, store)
+        msg = SimpleNamespace(
+            chat=SimpleNamespace(id=10),
+            text="hi",
+            caption=None,
+            bot=object(),
+            sender_chat=None,
+            from_user=SimpleNamespace(id=7, full_name="Ada Lovelace"),
+        )
+
+        with patch.object(conversation_module, "stream_tokens", _drain):
+            await conversations._generate([msg], (10, 20))
+
+        self.assertEqual(
+            generator.messages[0],
+            {"role": "system", "content": f"thread prompt\n\n{NAME_INSTRUCTION}"},
+        )
+        history = await store.history((10, 20))
+        self.assertEqual(history[0], {"role": "system", "content": "sys"})
 
 
 class FirstMessageGenerationTest(unittest.IsolatedAsyncioTestCase):

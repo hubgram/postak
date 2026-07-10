@@ -8,7 +8,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
 
-from postak.config import FIRST_PROMPT
+from postak.config import FIRST_PROMPT, NAME_INSTRUCTION
 from postak.generation import Generator
 from postak.rendering import stream_tokens
 from postak.store import DialogStore, Key
@@ -16,6 +16,18 @@ from postak.store import Message as StoreMessage
 from postak.titling import TitleSplitter, build_title_messages, is_first_message
 
 logger = logging.getLogger(__name__)
+
+
+async def effective_history(store: DialogStore, key: Key) -> list[StoreMessage]:
+    """The thread's history, with its own system prompt override applied when set."""
+    history = await store.history(key)
+    prompt = await store.get_system_prompt(key)
+    if prompt is None:
+        return history
+    system: StoreMessage = {"role": "system", "content": f"{prompt}\n\n{NAME_INSTRUCTION}"}
+    if history and history[0]["role"] == "system":
+        return [system, *history[1:]]
+    return [system, *history]
 
 
 def _user_message(comment: Message, text: str) -> StoreMessage:
@@ -117,7 +129,7 @@ class Conversations:
         if comments:
             await self._store.add_many(key, comments)
         reply_to = batch[-1]  # reply under the most recent comment
-        history = await self._store.history(key)
+        history = await effective_history(self._store, key)
         if is_first_message(history):
             # First message: the LLM returns "title\nanswer". Stream only the answer
             # (title line hidden) and store it before touching the channel post, so

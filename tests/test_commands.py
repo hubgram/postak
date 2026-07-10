@@ -18,12 +18,16 @@ async def drain_stream(message, tokens) -> str:
 
 
 class FakeAccessPolicy:
-    def __init__(self, *, can_manage: bool = True) -> None:
+    def __init__(self, *, can_manage: bool = True, can_answer: bool = False) -> None:
         self._can_manage = can_manage
+        self._can_answer = can_answer
         self.cleared_chats: list[int] = []
 
     async def can_manage(self, message) -> bool:
         return self._can_manage
+
+    async def can_answer(self, message, chat_id, thread_id) -> bool:
+        return self._can_answer
 
     async def admins(self) -> list[int]:
         return [1, 2]
@@ -147,7 +151,7 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(message.replies, ["Model changed to next."])
 
     async def test_sysprompt_shows_the_default_when_unset(self) -> None:
-        message = FakeMessage()
+        message = FakeMessage(thread_id=None)
         pt = FakePostak()
         command = SimpleNamespace(args="sysprompt")
 
@@ -156,7 +160,7 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(message.replies, ["Default system prompt:\ndefault system"])
 
     async def test_sysprompt_set_stores_and_shows_the_override(self) -> None:
-        message = FakeMessage()
+        message = FakeMessage(thread_id=None)
         store = InMemoryDialogStore()
         command = SimpleNamespace(args="sysprompt Be terse.  Answer in Arabic.")
 
@@ -176,7 +180,7 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_sysprompt_delete_resets_to_default(self) -> None:
-        message = FakeMessage()
+        message = FakeMessage(thread_id=None)
         store = InMemoryDialogStore()
         await store.set_system_prompt(GLOBAL_PROMPT, "override")
         command = SimpleNamespace(args="sysprompt delete")
@@ -185,6 +189,88 @@ class PostakAdminHandlerTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNone(await store.get_system_prompt(GLOBAL_PROMPT))
         self.assertEqual(message.replies, ["System prompt reset to default."])
+
+    async def test_sysprompt_in_thread_targets_the_thread(self) -> None:
+        message = FakeMessage()
+        store = InMemoryDialogStore()
+        await store.start((10, 20), (30, 40), system="sys")
+
+        await postak_admin(
+            message,
+            SimpleNamespace(args="sysprompt Be brief."),
+            FakeAccessPolicy(),
+            FakePostak(),
+            store,
+        )
+        await postak_admin(
+            message, SimpleNamespace(args="sysprompt"), FakeAccessPolicy(), FakePostak(), store
+        )
+        await postak_admin(
+            message,
+            SimpleNamespace(args="sysprompt delete"),
+            FakeAccessPolicy(),
+            FakePostak(),
+            store,
+        )
+
+        self.assertIsNone(await store.get_system_prompt(GLOBAL_PROMPT))
+        self.assertIsNone(await store.get_system_prompt((10, 20)))
+        self.assertEqual(
+            message.replies,
+            ["Thread system prompt updated.", "Be brief.", "Thread system prompt removed."],
+        )
+
+    async def test_sysprompt_in_unknown_thread_is_rejected(self) -> None:
+        message = FakeMessage()
+        store = InMemoryDialogStore()
+
+        await postak_admin(
+            message,
+            SimpleNamespace(args="sysprompt Be brief."),
+            FakeAccessPolicy(),
+            FakePostak(),
+            store,
+        )
+
+        self.assertEqual(message.replies, ["This thread is not a Postak conversation."])
+
+    async def test_scoped_user_manages_the_thread_prompt(self) -> None:
+        message = FakeMessage()
+        store = InMemoryDialogStore()
+        await store.start((10, 20), (30, 40), system="sys")
+        policy = FakeAccessPolicy(can_manage=False, can_answer=True)
+
+        await postak_admin(
+            message, SimpleNamespace(args="sysprompt Be brief."), policy, FakePostak(), store
+        )
+
+        self.assertEqual(await store.get_system_prompt((10, 20)), "Be brief.")
+        self.assertEqual(message.replies, ["Thread system prompt updated."])
+
+    async def test_scoped_user_cannot_touch_the_global_prompt(self) -> None:
+        message = FakeMessage(thread_id=None)
+        store = InMemoryDialogStore()
+        policy = FakeAccessPolicy(can_manage=False, can_answer=True)
+
+        await postak_admin(
+            message, SimpleNamespace(args="sysprompt Be brief."), policy, FakePostak(), store
+        )
+
+        self.assertIsNone(await store.get_system_prompt(GLOBAL_PROMPT))
+        self.assertEqual(message.replies, ["You are not a Postak admin."])
+
+    async def test_unscoped_user_cannot_touch_the_thread_prompt(self) -> None:
+        message = FakeMessage()
+        store = InMemoryDialogStore()
+        await store.start((10, 20), (30, 40), system="sys")
+        policy = FakeAccessPolicy(can_manage=False, can_answer=False)
+
+        await postak_admin(
+            message, SimpleNamespace(args="sysprompt Be brief."), policy, FakePostak(), store
+        )
+
+        self.assertIsNone(await store.get_system_prompt((10, 20)))
+        self.assertEqual(message.replies, ["You are not a Postak admin."])
 
     async def test_admin_list_reports_admin_ids(self) -> None:
         message = FakeMessage()

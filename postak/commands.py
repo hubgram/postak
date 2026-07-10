@@ -10,11 +10,11 @@ from aiogram.types import Message
 from postak.access import AccessPolicy, AccessScope
 from postak.channels import register_channel
 from postak.config import FIRST_PROMPT
-from postak.conversation import set_channel_title
+from postak.conversation import effective_history, set_channel_title
 from postak.generation import collect_tokens
 from postak.registry import ChannelRegistry
 from postak.rendering import stream_tokens
-from postak.store import GLOBAL_PROMPT, AccessKey, DialogStore, Store
+from postak.store import GLOBAL_PROMPT, AccessKey, DialogStore, Key, Store
 from postak.store import Message as StoreMessage
 from postak.titling import TitleSplitter, build_title_messages
 
@@ -48,10 +48,10 @@ Model
 - model get
 - model set <model>
 
-Prompt
-- sysprompt - show the global system prompt
-- sysprompt <text> - set it (used by new conversations)
-- sysprompt delete - reset to the built-in default"""
+Prompt (thread's own inside a thread, else the global default)
+- sysprompt - show it
+- sysprompt <text> - set it
+- sysprompt delete - reset it"""
 
 TELEGRAM_TEXT_LIMIT = 4096
 
@@ -101,11 +101,11 @@ async def postak_admin(
     store: Store,
 ) -> None:
     """Manage Postak admins and access rules via /postak subcommands."""
-    if not await access_policy.can_manage(message):
+    args = (command.args or "").split()
+    if not await _may_run(args, message, access_policy):
         await _reply(message, "You are not a Postak admin.")
         return
 
-    args = (command.args or "").split()
     if not args:
         await _reply(message, POSTAK_USAGE)
         return
@@ -163,15 +163,12 @@ async def postak_admin(
                 pt.set_model(model)
                 await _reply(message, f"Model changed to {model}.")
             case ["sysprompt"]:
-                stored = await store.get_system_prompt(GLOBAL_PROMPT)
-                await _reply(message, stored or f"Default system prompt:\n{pt.system_prompt}")
+                await _show_system_prompt(message, store, pt)
             case ["sysprompt", "delete"]:
-                await store.delete_system_prompt(GLOBAL_PROMPT)
-                await _reply(message, "System prompt reset to default.")
+                await _delete_system_prompt(message, store)
             case ["sysprompt", *_]:
                 text = (command.args or "").strip().removeprefix("sysprompt").strip()
-                await store.set_system_prompt(GLOBAL_PROMPT, text)
-                await _reply(message, "System prompt updated. New conversations will use it.")
+                await _set_system_prompt(message, store, text)
             case ["digest"]:
                 await _digest_thread(message, store, pt.generator)
             case ["compress"]:
@@ -190,6 +187,65 @@ async def postak_admin(
         await _reply(message, str(exc))
     except TelegramBadRequest as exc:
         await _reply(message, f"Telegram error: {exc.message}")
+
+
+async def _may_run(args: list[str], message: Message, access_policy: AccessPolicy) -> bool:
+    if await access_policy.can_manage(message):
+        return True
+    # Users with scoped access may manage their own thread's system prompt.
+    thread_id = discussion_thread_id(message)
+    return (
+        args[:1] == ["sysprompt"]
+        and thread_id is not None
+        and await access_policy.can_answer(message, message.chat.id, thread_id)
+    )
+
+
+async def _prompt_scope(message: Message, store: DialogStore) -> Key | None:
+    """The surrounding thread's scope, the global scope outside threads, or None."""
+    thread_id = discussion_thread_id(message)
+    if thread_id is None:
+        return GLOBAL_PROMPT
+    key = (message.chat.id, thread_id)
+    return key if await store.has(key) else None
+
+
+async def _show_system_prompt(
+    message: Message, store: DialogStore, pt: PostakController
+) -> None:
+    key = await _prompt_scope(message, store)
+    if key is None:
+        await _reply(message, "This thread is not a Postak conversation.")
+        return
+    stored = await store.get_system_prompt(key)
+    if key == GLOBAL_PROMPT:
+        await _reply(message, stored or f"Default system prompt:\n{pt.system_prompt}")
+    else:
+        await _reply(message, stored or "No thread system prompt. Using the global one.")
+
+
+async def _set_system_prompt(message: Message, store: DialogStore, text: str) -> None:
+    key = await _prompt_scope(message, store)
+    if key is None:
+        await _reply(message, "This thread is not a Postak conversation.")
+        return
+    await store.set_system_prompt(key, text)
+    if key == GLOBAL_PROMPT:
+        await _reply(message, "System prompt updated. New conversations will use it.")
+    else:
+        await _reply(message, "Thread system prompt updated.")
+
+
+async def _delete_system_prompt(message: Message, store: DialogStore) -> None:
+    key = await _prompt_scope(message, store)
+    if key is None:
+        await _reply(message, "This thread is not a Postak conversation.")
+        return
+    await store.delete_system_prompt(key)
+    if key == GLOBAL_PROMPT:
+        await _reply(message, "System prompt reset to default.")
+    else:
+        await _reply(message, "Thread system prompt removed.")
 
 
 async def _format_access_rules(access_policy: AccessPolicy) -> str:
@@ -349,7 +405,7 @@ async def _regenerate_thread_title(
         return
 
     splitter = TitleSplitter(
-        generator.tokens(build_title_messages(await store.history(key), title_prompt))
+        generator.tokens(build_title_messages(await effective_history(store, key), title_prompt))
     )
     await collect_tokens(splitter.stream())
     if not splitter.title:
@@ -386,7 +442,7 @@ async def _regenerate_answer(
         await _reply(message, "This thread is not a Postak conversation.")
         return
 
-    history = _history_through_latest_user(await store.history(key))
+    history = _history_through_latest_user(await effective_history(store, key))
     if history is None:
         await _reply(message, "No user message to regenerate from.")
         return
