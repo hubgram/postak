@@ -5,7 +5,7 @@
 Start a chat with `/new`. Each post becomes a conversation title; its comment thread is the chat. Postak replies as you type and names the post after the first reply.
 
 <p align="center">
-  <img src="docs/images/channel-preview.png" alt="Postak channel with active conversations">
+  <img src="https://raw.githubusercontent.com/hubgram/postak/main/docs/images/channel-preview.png" alt="Postak channel with active conversations">
 </p>
 
 > [!CAUTION]
@@ -45,9 +45,9 @@ uv sync
 cp .env.example .env    # fill in BOT_TOKEN, TARGET_CHANNEL_ID, LLM_MODEL, …
 uv run postak
 
-# or, without uv:
-#   pip install -e .
-#   python -m postak
+# or, from PyPI:
+#   pip install postak
+#   postak    # reads .env from the current directory
 ```
 
 3. Send `/new` in your channel or discussion group, then reply in the new thread.

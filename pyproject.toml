@@ -6,6 +6,22 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
+authors = [{ name = "Naji", email = "teamnaji@gmail.com" }]
+keywords = ["telegram", "bot", "ai", "llm", "chatbot", "aiogram", "openai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Framework :: AsyncIO",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications :: Chat",
+    "Typing :: Typed",
+]
 dependencies = [
     "aiogram>=3.29.1",
     "aiosqlite>=0.22.1",
@@ -14,8 +30,16 @@ dependencies = [
     "telegramify-markdown>=1.2.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/hubgram/postak"
+Repository = "https://github.com/hubgram/postak"
+Issues = "https://github.com/hubgram/postak/issues"
+
 [project.scripts]
 postak = "postak.__main__:main"
+
+[tool.hatch.build.targets.sdist]
+only-include = ["postak", "tests", "README.md", "LICENSE", ".env.example"]
 
 [build-system]
 requires = ["hatchling"]
